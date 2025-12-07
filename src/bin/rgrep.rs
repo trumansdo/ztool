@@ -1,27 +1,14 @@
-use clap::Command;
-use clap::Parser;
-use log::info;
-use std::{error::Error, path::PathBuf};
-
-use ztool::init::init_log4rs;
-
-#[derive(Parser, Debug)]
-#[command(name = "rgrep")]
-#[command(version = "1.0")]
-#[command(about = "rust mini grep tool", long_about = None)]
-struct Cli {
-    /// Sets a file
-    #[arg(short = 'f', long = "file", value_name = "FILE")]
-    file: Option<PathBuf>,
-
-    /// Sets a directory
-    #[arg(short = 'd', long = "dir", value_name = "DIR")]
-    dir: Option<PathBuf>,
-}
+use log::{error, info, trace};
+use log4rs;
+use serde_yml;
+use std::error::Error;
 
 fn main() -> Result<(), Box<dyn Error>> {
-    init_log4rs::init_log4rs();
-    let cli = Cli::parse();
-    info!("cli:{:?}", cli);
+    let config_str = include_str!("../config/log4rs.yaml");
+    let config = serde_yml::from_str(config_str).unwrap();
+    log4rs::init_raw_config(config).unwrap();
+    info!("Goes to console, file and rolling file");
+    error!("Goes to console, file and rolling file");
+    trace!("Doesn't go to console as it is filtered out");
     Ok(())
 }

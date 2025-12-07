@@ -1,0 +1,34 @@
+# 基本格式
+max_width = 120
+tab_spaces = 4
+use_small_heuristics = "Max"
+hard_tabs = false
+newline_style = "Auto"
+
+# 函数和闭包
+fn_params_layout = "Tall"
+chain_width = 32
+
+# 表达式和语句
+control_brace_style = "AlwaysSameLine"
+match_arm_blocks = false
+
+# 结构体和枚举
+struct_lit_width = 20
+struct_variant_width = 40
+enum_discrim_align_threshold = 10
+
+# 导入和模块
+imports_layout = "Mixed"
+merge_imports = true
+reorder_imports = true
+
+# 注释
+wrap_comments = true
+comment_width = 80
+normalize_comments = true
+
+# 其他
+error_on_line_overflow = false
+error_on_unformatted = false
+# required_version = "1.4.36"

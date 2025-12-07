@@ -1,11 +1,14 @@
+// 引用另一个 front_of_house 模块的内容(来自 front_of_house.rs 或 front_of_house 文件夹)
 pub mod init;
+pub mod mod01;
+pub mod netdump;
 
-// 文件内的单元测试，#[cfg(test)]表示 只在测试模式下编译
-#[cfg(test)]
-mod tests {
+#[allow(unused)]
+fn study_mod01() {
+    // 绝对路径
+    crate::mod01::hosting::add_to_waitlist(); // 需要如下 pub 权限: pub mod hosting, pub fn add_to_waitlist
 
-    #[test]
-    fn test_intro() {
-        assert_eq!(1, 1);
-    }
+    // 相对路径
+    mod01::hosting::add_to_waitlist();
+    self::mod01::hosting::add_to_waitlist();
 }
