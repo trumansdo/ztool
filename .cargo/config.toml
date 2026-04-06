@@ -1,5 +1,5 @@
-[source.crates-io]
-replace-with = "vendored-sources"
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"
 
-[source.vendored-sources]
-directory = "third-party/vendor"
+[build]
+jobs = 1

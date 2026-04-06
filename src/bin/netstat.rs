@@ -1,5 +1,4 @@
 use log::info;
-use ztool::init::init_log4rs;
 
 use pnet::datalink::{self, Channel, NetworkInterface};
 
@@ -209,7 +208,6 @@ fn handle_ethernet_frame(interface: &NetworkInterface, ethernet: &EthernetPacket
 }
 
 fn main() {
-    init_log4rs::init();
     info!("Starting packetdump");
 
     // Find the network interface with the provided name

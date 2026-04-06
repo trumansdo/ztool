@@ -6,9 +6,9 @@ pub mod netdump;
 #[allow(unused)]
 fn study_mod01() {
     // 绝对路径
-    crate::mod01::hosting::add_to_waitlist(); // 需要如下 pub 权限: pub mod hosting, pub fn add_to_waitlist
+    // crate::mod01::hosting::add_to_waitlist(); // 需要如下 pub 权限: pub mod hosting, pub fn add_to_waitlist
 
     // 相对路径
-    mod01::hosting::add_to_waitlist();
-    self::mod01::hosting::add_to_waitlist();
+    // mod01::hosting::add_to_waitlist();
+    // self::mod01::hosting::add_to_waitlist();
 }
