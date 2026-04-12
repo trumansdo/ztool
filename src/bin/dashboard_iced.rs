@@ -197,49 +197,78 @@ struct DashboardState {
 }
 
 // ============================================================================
-// 第六部分：Update 函数 - 纯函数处理消息，更新状态
-//               (类似 Redux reducer)
+// 第六部分：Update 函数 (行 200-)
+// 纯函数处理消息，更新状态，类似 Redux reducer
 // ============================================================================
 
+// update: 状态更新函数 (Elm 架构)
+// 参数 state: &mut DashboardState - 可变引用，修改状态
+// 参数 message: Message - 用户交互产生的消息
 fn update(state: &mut DashboardState, message: Message) {
+    // match 匹配消息类型，处理对应的状态更新
     match message {
+        // 菜单选择
         Message::SelectMenu(menu) => state.selected_menu = menu,
+
+        // 文本输入变化
         Message::TextToolInputChanged(s) => state.text_tool_input = s,
+
+        // 标签页切换
         Message::TextToolTabChanged(tab) => {
             state.text_tool_tab = tab;
             state.text_tool_output.clear();
         }
+
+        // Base64 编码
         Message::EncodeBase64 => {
+            // base64::engine::general_purpose::STANDARD: 标准编码器
+            // .encode(): 编码
             state.text_tool_output = base64::engine::general_purpose::STANDARD.encode(&state.text_tool_input);
         }
+
+        // Base64 解码
         Message::DecodeBase64 => {
             state.text_tool_output = base64::engine::general_purpose::STANDARD
                 .decode(&state.text_tool_input)
                 .map(|v| String::from_utf8_lossy(&v).to_string())
                 .unwrap_or_else(|_| "解码失败".to_string());
         }
+
+        // URL 编码
         Message::EncodeUrl => {
             state.text_tool_output = urlencoding::encode(&state.text_tool_input).to_string();
         }
+
+        // URL 解码
         Message::DecodeUrl => {
             state.text_tool_output = urlencoding::decode(&state.text_tool_input)
                 .map(|v| v.to_string())
                 .unwrap_or_else(|_| "解码失败".to_string());
         }
+
+        // 清空
         Message::ClearTextTool => {
             state.text_tool_input.clear();
             state.text_tool_output.clear();
         }
+
+        // 时间戳输入
         Message::TimestampInputChanged(s) => state.timestamp_input = s,
+
+        // 时间戳转换
         Message::ConvertTimestamp => {
+            // .parse::<i64>(): 字符串解析为 i64
             if let Ok(ts) = state
                 .timestamp_input
                 .parse::<i64>()
             {
+                // chrono::Utc: UTC 时间
+                // .timestamp_opt(): 从时间戳创建 DateTime
                 if let Some(datetime) = Utc
                     .timestamp_opt(ts, 0)
                     .single()
                 {
+                    // .format(): 格式化
                     state.timestamp_output = format!("{}", datetime.format("%Y-%m-%d %H:%M:%S"));
                 } else {
                     state.timestamp_output = "时间戳无效".to_string();
@@ -355,21 +384,40 @@ fn shunting_yard(input: &str) -> Result<f64, String> {
 }
 
 // ============================================================================
-// 第七部分：View 函数 - 根据状态渲染 UI (类似 React render)
+// 第七部分：View 函数 (行 357-)
+// 根据状态渲染 UI，类似 React render
 // ============================================================================
 
+// view: UI 渲染函数
+// 参数 state: &DashboardState - 不可变引用，只读状态
+// 返回 Element<Message>: iced 的 UI 元素类型
 fn view(state: &DashboardState) -> Element<Message> {
+    // view_menu_panel: 渲染左侧菜单面板
     let menu_panel = view_menu_panel(state.selected_menu);
+
+    // match 匹配当前选中的菜单项
+    // let content = 根据选中的菜单显示对应的面板
     let content = match state.selected_menu {
         MenuItem::Network => view_network_panel(),
         MenuItem::TextTool => view_text_tool_panel(state),
         MenuItem::System => view_system_panel(state),
         MenuItem::Calculator => view_calculator_panel(state),
     };
+
+    // row!: 水平布局容器
+    // 将菜单面板和内容面板水平排列
+    // .into(): 转换为 Element<Message>
     row![menu_panel, content].into()
 }
 
+// ============================================================================
+// 菜单面板视图函数 (行 384-)
+// iced widget: button, text, column, container
+// ============================================================================
+
+// view_menu_panel: 左侧菜单面板渲染
 fn view_menu_panel(selected: MenuItem) -> Element<'static, Message> {
+    // 数组: 菜单项和标签文本对
     let items = [
         (MenuItem::Network, "网络"),
         (MenuItem::TextTool, "文本工具"),
@@ -377,29 +425,62 @@ fn view_menu_panel(selected: MenuItem) -> Element<'static, Message> {
         (MenuItem::Calculator, "计算器"),
     ];
 
+    // column!: 垂直布局容器
+    // text!: 文本控件
     let mut col = column![text("工具菜单").size(20), text("")];
+
+    // for 遍历菜单数组
     for (menu, label) in items {
+        // button!: 按钮控件
+        // .on_press(): 设置点击回调，返回 Message
         let btn = button(text(label)).on_press(Message::SelectMenu(menu));
+        // .push(): 添加元素到 column
+        // .width(): 设置宽度
+        // Length::Fill: 填充父容器
         col = col.push(btn.width(Length::Fill));
     }
+
+    // container!: 容器控件，添加布局
+    // .width(): 设置宽度 180
+    // .padding(): 设置内边距 10
     container(col)
         .width(180)
         .padding(10)
         .into()
 }
 
+// ============================================================================
+// 网络监控面板 (行 423-)
+// Sysinfo 集成
+// ============================================================================
+
+// view_network_panel: 网络监控面板渲染
 fn view_network_panel() -> Element<'static, Message> {
+    // System::new_all(): 创建包含所有信息的系统实例
     let sys = System::new_all();
+
+    // column!: 垂直布局
     let mut col = column![
-        text("网络监控").size(24),
-        text(""),
+        text("网络监控").size(24), // 标题
+        text(""),                  // 空行
+        // format!: 格式化字符串
         text(format!("进程数: {}", sys.processes().len())),
         text(format!("CPU核心: {}", sys.cpus().len())),
     ];
+
+    // scrollable!: 可滚动区域
+    // .into(): 转换为 Element
     scrollable(col).into()
 }
 
+// ============================================================================
+// 文本工具面板 (行 447-)
+// 核心控件: row, text_input, checkbox
+// ============================================================================
+
+// view_text_tool_panel: 文本工具面板渲染
 fn view_text_tool_panel(state: &DashboardState) -> Element<Message> {
+    // 标签页数组
     let tabs = [
         (TextToolTab::Base64, "Base64"),
         (TextToolTab::UrlEncode, "URL编码"),
@@ -407,14 +488,21 @@ fn view_text_tool_panel(state: &DashboardState) -> Element<Message> {
         (TextToolTab::JsonFormat, "JSON"),
     ];
 
+    // row!: 水平布局容器
     let mut tab_row = row![];
+    // for 遍历标签页
     for (tab, label) in tabs {
+        // button: 按钮
+        // .on_press: 点击时发送消息
         let btn = button(text(label)).on_press(Message::TextToolTabChanged(tab));
+        // .push(): 添加到 row
         tab_row = tab_row.push(btn);
     }
 
+    // column!: 垂直布局容器
     let mut col = column![text("文本工具").size(24), text(""), tab_row, text("")];
 
+    // match 匹配当前标签页
     match state.text_tool_tab {
         TextToolTab::Base64 => {
             col = col.push(text("输入:"));
@@ -480,19 +568,42 @@ fn view_text_tool_panel(state: &DashboardState) -> Element<Message> {
     scrollable(col).into()
 }
 
+// ============================================================================
+// 系统信息面板 (行 542-)
+// 核心控件: progress_bar, scrollable
+// ============================================================================
+
+// view_system_panel: 系统信息面板渲染
 fn view_system_panel(state: &DashboardState) -> Element<Message> {
+    // column!: 垂直布局
     let mut col = column![text("系统信息").size(24), text("")];
+    // button: 按钮控件
+    // on_press: 点击回调
     col = col.push(button("刷新").on_press(Message::RefreshSystemInfo));
     col = col.push(text(""));
 
+    // &state.system: 引用系统实例
     let sys = &state.system;
+
+    // 计算 CPU 平均使用率
+    // .cpus(): CPU 数组
+    // .iter(): 迭代器
+    // .map(): 映射闭包
+    // .cpu_usage(): CPU 使用率
+    // .sum(): 求和
+    // / len() as f32: 计算平均值
     let cpu: f32 = sys
         .cpus()
         .iter()
         .map(|c| c.cpu_usage())
         .sum::<f32>()
         / sys.cpus().len() as f32;
+
+    // text!: 显示文本
     col = col.push(text(format!("CPU: {:.1}%", cpu)));
+
+    // progress_bar!: 进度条控件
+    // 0.0..=100.0: 范围
     col = col.push(progress_bar(0.0..=100.0, cpu));
 
     let total = sys.total_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
@@ -517,10 +628,21 @@ fn view_system_panel(state: &DashboardState) -> Element<Message> {
     scrollable(col).into()
 }
 
+// ============================================================================
+// 计算器面板 (行 602-)
+// 核心控件: slider
+// ============================================================================
+
+// view_calculator_panel: 计算器面板渲染
 fn view_calculator_panel(state: &DashboardState) -> Element<Message> {
+    // 标签页数组
     let tabs = [(CalculatorTab::Bmi, "BMI"), (CalculatorTab::Simple, "计算")];
+    // row!: 水平布局
     let mut tab_row = row![];
+    // for 遍历
     for (tab, label) in tabs {
+        // button: 按钮
+        // .on_press: 点击回调
         let btn = button(text(label)).on_press(Message::CalculatorTabChanged(tab));
         tab_row = tab_row.push(btn);
     }
@@ -567,17 +689,23 @@ fn view_calculator_panel(state: &DashboardState) -> Element<Message> {
 // | ICED_BACKEND | wgpu | GPU渲染 (默认) |
 // | ICED_BACKEND | tiny-skia | 软件渲染 (CPU) |
 //
-// 运行示例:
-//   $env:ICED_BACKEND="tiny-skia"; cargo run --bin dashboard_iced
+// ============================================================================
+// main 函数 (行 570-)
+// 程序入口点
+// ============================================================================
 
+// main: 程序入口，返回 iced::Result
 fn main() -> iced::Result {
-    // 初始化系统
+    // DashboardState: 主应用状态结构体
+    // ::default(): 调用 Default trait 创建默认状态
     let mut state = DashboardState::default();
+    // System::refresh_all(): 立即刷新所有系统信息
     state.system.refresh_all();
 
-    // iced 0.14: 只接受 update 和 view 两个函数
-    // 状态由 iced 内部管理，会自动传递给 update 和 view
-
-    // 使用默认状态运行
+    // iced::run(): 启动 iced 应用
+    // 参数1 update: 状态更新函数，处理消息
+    // 参数2 view: UI 渲染函数，根据状态显示 UI
+    // iced 内部管理状态，会自动传递给 update 和 view
+    // 使用默认后端 (wgpu) 运行
     iced::run(update, view)
 }

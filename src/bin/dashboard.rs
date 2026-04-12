@@ -119,42 +119,43 @@
 //! ============================================================================
 
 // ============================================================================
-// 第一部分：导入和依赖
+// 第一部分：导入和依赖 (行 121-130)
 // ============================================================================
 
-use anyhow::Result;
-use base64::Engine; // base64 编解码 trait
-use eframe::egui; // egui 核心库
-use std::path::PathBuf;
-use sysinfo::System; // 系统信息获取
-use thiserror::Error;
+use anyhow::Result; // anyhow: 统一错误处理，简化错误传播
+use base64::Engine; // base64::Engine: base64 编码解码的 trait，提供 encode/decode 方法
+use eframe::egui; // egui: 核心 GUI 库，包含所有控件和布局
+use std::path::PathBuf; // PathBuf: 跨平台路径表示，类似 String 的 Path 版本
+use sysinfo::System; // sysinfo: 系统信息获取库，查看 CPU/内存/进程等
+use thiserror::Error; // thiserror: 自定义错误派生宏，自动实现 Error trait
 
 // ============================================================================
-// 第二部分：错误定义 (thiserror + anyhow 最佳实践)
+// 第二部分：错误定义 (行 132-146)
 // ============================================================================
 
-/// 应用错误枚举 - 使用 thiserror 自动派生 Error trait
+// AppError: 应用自定义错误枚举
+// #[derive(Debug, Error)] 自动派生 Debug 和 Display
 #[derive(Debug, Error)]
 pub enum AppError {
-    /// 未找到中文字体
+    // #[error("...")] thiserror 宏自动实现 Display trait
     #[error("未找到中文字体")]
     FontNotFound,
 
-    /// 读取字体文件失败 - #[from] 自动实现 From<std::io::Error>
+    // #[from] 自动实现 From<std::io::Error>，错误自动转换
     #[error("读取字体文件失败: {0}")]
     ReadFontFailed(#[from] std::io::Error),
 }
 
 // ============================================================================
-// 第三部分：菜单系统 - 展示 enum + 模式匹配
+// 第三部分：菜单系统 (行 148-157) - enum + 模式匹配
 // ============================================================================
 
-/// 菜单项枚举 - 使用 Copy trait 因为只是简单的选择标记
+// MenuItem: 菜单项枚举，表示左侧菜单选项
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum MenuItem {
-    Network,    // 网络监控
-    TextTool,   // 文本工具
-    System,     // 系统信息
+    Network,    // Network: 网络监控菜单项
+    TextTool,   // TextTool: 文本工具菜单项
+    System,     // System: 系统信息菜单项
     Calculator, // 计算器
 }
 
@@ -316,34 +317,47 @@ impl Default for DashboardApp {
     }
 }
 
-/**
- * eframe::App trait - egui 应用的入口点
- *
- * egui 0.34 新 API:
- * - ui(): 绘制 UI
- * - logic(): 在 UI 之前调用，可用于状态更新
- */
+// ============================================================================
+// 第七部分：App trait 实现 ⭐ 核心 (行 320-354)
+// ============================================================================
+
+// eframe::App: egui 应用入口 trait
+// ui(): 每帧调用的方法，构建即时模式 UI
 impl eframe::App for DashboardApp {
+    // self: &mut DashboardApp - 可变引用，可以修改状态
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        // egui::Panel::left(): 左侧面板
+        // .default_size(180.0): 默认宽度 180 像素
+        // .show_inside(): 在父 UI 内显示面板
         egui::Panel::left("left_panel")
             .default_size(180.0)
             .show_inside(ui, |ui| {
+                // 标题
                 ui.heading("工具菜单");
+                // 分隔线
                 ui.separator();
 
+                // for 循环遍历菜单项数组
                 for menu in [MenuItem::Network, MenuItem::TextTool, MenuItem::System, MenuItem::Calculator] {
+                    // == 比较是否选中
                     let selected = self.selected_menu == menu;
-
+                    // selectable_label: 可选择标签，类似单选按钮
+                    // .clicked(): 检测点击
                     if ui
                         .selectable_label(selected, menu.label())
                         .clicked()
                     {
+                        // 更新状态
                         self.selected_menu = menu;
                     }
                 }
             });
 
+        // egui::CentralPanel::default(): 中央面板
+        // .show_inside(): 显示中央区域
+        // match 匹配当前菜单项，决定显示哪个面板
         egui::CentralPanel::default().show_inside(ui, |ui| match self.selected_menu {
+            // 显示对应的面板函数
             MenuItem::Network => show_network_panel(ui),
             MenuItem::TextTool => show_text_tool_panel(ui, &mut self.text_tool),
             MenuItem::System => show_system_panel(ui, &mut self.system_info),
@@ -353,39 +367,46 @@ impl eframe::App for DashboardApp {
 }
 
 // ============================================================================
-// 第八部分：网络监控面板
+// 第八部分：网络监控面板 (行 356-400)
 // ============================================================================
 
-/**
- * 网络监控面板
- *
- * egui 常用控件:
- * - heading(): 标题文字
- * - separator(): 分隔线
- * - label(): 普通文字
- * - indent(): 缩进块
- * - ScrollArea::vertical(): 垂直滚动区域
- */
+// show_network_panel: 显示网络监控面板的函数
+// 参数 ui: &mut egui::Ui - 可变借用的 UI 上下文
 fn show_network_panel(ui: &mut egui::Ui) {
+    // ui.heading(): 大标题文字，显示表情图标加文字
     ui.heading("🌐 网络监控");
+    // ui.separator(): 水平分隔线，分隔区域
     ui.separator();
 
+    // egui::ScrollArea::vertical(): 垂直滚动区域，内部可滚动
+    // .show(ui, |ui| {}): 在滚动区域内构建 UI
     egui::ScrollArea::vertical().show(ui, |ui| {
+        // ui.label(): 显示文字标签
         ui.label("网络信息 (sysinfo):");
+        // ui.indent(): 带缩进的块，类似于代码缩进
         ui.indent("net_info", |ui| {
+            // System::new_all(): 创建包含所有信息的系统实例
             let sys = System::new_all();
+            // format!(): 字符串格式化，类似 println! 但返回 String
+            // .processes(): 获取进程 HashMap
+            // .len(): 元素数量
             ui.label(format!("系统进程数: {}", sys.processes().len()));
+            // .cpus(): 获取 CPU 信息 Vec
             ui.label(format!("CPU 核心数: {}", sys.cpus().len()));
         });
 
+        // 分隔线
         ui.separator();
 
+        // 标签
         ui.label("网络统计:");
+        // 缩进块
         ui.indent("net_stats", |ui| {
             ui.label("网络接口信息需要额外配置");
             ui.label("提示: 使用 pcap crate 可实现抓包功能");
         });
 
+        // 分隔线
         ui.separator();
 
         ui.label("功能说明:");
@@ -399,37 +420,42 @@ fn show_network_panel(ui: &mut egui::Ui) {
 }
 
 // ============================================================================
-// 第九部分：文本工具面板 - 展示多种控件
+// 第九部分：文本工具面板 (行 409-448)
+// 展示: ScrollArea, horizontal, selectable_label, TextEdit, 按钮
 // ============================================================================
 
-/**
- * 文本工具面板
- *
- * 关键概念:
- * - ScrollArea::vertical(): 垂直滚动区域，重要！因为内容可能超过窗口
- * - 状态通过 &mut TextToolState 传递
- */
+// show_text_tool_panel: 文本工具面板函数
+// 参数 state: &mut TextToolState - 可变引用传递状态，类似 React useState
 fn show_text_tool_panel(ui: &mut egui::Ui, state: &mut TextToolState) {
+    // 标题
     ui.heading("📝 文本工具");
+    // 分隔线
     ui.separator();
 
+    // 垂直滚动区域
     egui::ScrollArea::vertical().show(ui, |ui| {
-        // 标签页切换 - 使用 horizontal 布局
+        // horizontal: 水平布局容器，标签页按钮横向排列
         ui.horizontal(|ui| {
+            // for 循环遍历枚举数组
             for tab in [TextToolTab::Base64, TextToolTab::UrlEncode, TextToolTab::Timestamp, TextToolTab::JsonFormat] {
+                // == 比较是否选中
                 let selected = state.selected_tab == tab;
+                // selectable_label: 可选择的标签，类似单选按钮
+                // .clicked(): 立即模式检测点击
                 if ui
                     .selectable_label(selected, tab.label())
                     .clicked()
                 {
+                    // 更新状态
                     state.selected_tab = tab;
                 }
             }
         });
 
+        // 分隔线
         ui.separator();
 
-        // 匹配当前标签页，显示对应的工具
+        // match 匹配当前选中的标签页
         match state.selected_tab {
             TextToolTab::Base64 => show_base64_tool(ui, state),
             TextToolTab::UrlEncode => show_url_encode_tool(ui, state),
@@ -439,60 +465,82 @@ fn show_text_tool_panel(ui: &mut egui::Ui, state: &mut TextToolState) {
     });
 }
 
-/**
- * Base64 工具 - 展示 TextEdit 和按钮
- *
- * 核心控件:
- * - TextEdit::multiline(): 多行文本输入
- * - Button::clicked(): 按钮点击检测，返回 bool
- */
+// ============================================================================
+// Base64 工具函数 (行 452-494)
+// 核心控件: TextEdit::multiline, Button
+// ============================================================================
+
+// show_base64_tool: Base64 编解码工具函数
 fn show_base64_tool(ui: &mut egui::Ui, state: &mut TextToolState) {
-    ui.label("输入:");
-    // desired_rows() 设置默认行数
+    ui.label("输入:"); // 输入标签
+
+    // ui.add(): 添加控件
+    // TextEdit::multiline(): 多行文本输入框
+    // desired_rows(4): 默认显示 4 行
     ui.add(egui::TextEdit::multiline(&mut state.input).desired_rows(4));
 
-    // 按钮行 - horizontal 布局
+    // horizontal: 水平布局，按钮横向排列
     ui.horizontal(|ui| {
-        // 点击检测: button().clicked() 返回 bool
+        // button(): 按钮控件
+        // .clicked(): 立即模式检测，返回 bool
         if ui
             .button("编码 (Encode)")
             .clicked()
         {
-            // 使用 base64 crate 编码
+            // base64::engine::general_purpose::STANDARD: 标准 base64 编码器
+            // .encode(): 编码为 base64 字符串
             state.output = base64::engine::general_purpose::STANDARD.encode(&state.input);
         }
         if ui
             .button("解码 (Decode)")
             .clicked()
         {
+            // .decode(): 解码为 Vec<u8>
+            // .map(): 转换 Result
+            // String::from_utf8_lossy(): 转换为 UTF-8 字符串
+            // .to_owned(): 克隆为 String
+            // .unwrap_or_else(): 错误时返回默认值
             state.output = base64::engine::general_purpose::STANDARD
                 .decode(&state.input)
                 .map(|v| String::from_utf8_lossy(&v).to_string())
                 .unwrap_or_else(|_| "解码失败".to_string());
         }
+        // 清空按钮
         if ui.button("清空").clicked() {
+            // .clear(): 清空字符串内容
             state.input.clear();
             state.output.clear();
         }
     });
 
-    ui.label("输出:");
-    // frame(false) 移除边框，使其看起来像纯文本输出
+    ui.label("输出:"); // 输出标签
+
+    // 第二个 TextEdit 显示输出，frame(false) 移除边框
     ui.add(egui::TextEdit::multiline(&mut state.output).desired_rows(4));
 }
 
-/**
- * URL 编码工具
- */
+// ============================================================================
+// URL 编码工具 (行 522-)
+// 核心控件: urlencoding crate
+// ============================================================================
+
+// show_url_encode_tool: URL 编码解码工具函数
 fn show_url_encode_tool(ui: &mut egui::Ui, state: &mut TextToolState) {
     ui.label("输入:");
     ui.add(egui::TextEdit::multiline(&mut state.input).desired_rows(4));
 
+    // horizontal: 水平布局
     ui.horizontal(|ui| {
+        // button(): 按钮
+        // .clicked(): 点击检测
         if ui.button("编码").clicked() {
+            // urlencoding::encode(): URL 编码
             state.output = urlencoding::encode(&state.input).to_string();
         }
         if ui.button("解码").clicked() {
+            // urlencoding::decode(): URL 解码
+            // .map(): 转换 Result
+            // .to_string(): 转换为 String
             state.output = urlencoding::decode(&state.input)
                 .map(|v| v.to_string())
                 .unwrap_or_else(|_| "解码失败".to_string());
@@ -507,9 +555,12 @@ fn show_url_encode_tool(ui: &mut egui::Ui, state: &mut TextToolState) {
     ui.add(egui::TextEdit::multiline(&mut state.output).desired_rows(4));
 }
 
-/**
- * 时间戳工具 - 展示 Checkbox 和 TextEdit::singleline
- */
+// ============================================================================
+// 时间戳工具 (行 558-)
+// 核心控件: Checkbox, TextEdit::singleline
+// ============================================================================
+
+// show_timestamp_tool: 时间戳转换工具函数
 fn show_timestamp_tool(ui: &mut egui::Ui, state: &mut TextToolState) {
     // Checkbox - 布尔值的复选框
     ui.checkbox(&mut state.use_current_time, "使用当前时间");
@@ -549,17 +600,25 @@ fn show_timestamp_tool(ui: &mut egui::Ui, state: &mut TextToolState) {
     }
 }
 
-/**
- * JSON 格式化工具
- */
+// ============================================================================
+// JSON 格式化工具 (行 603-)
+// 核心控件: serde_json
+// ============================================================================
+
+// show_json_tool: JSON 格式化压缩工具函数
 fn show_json_tool(ui: &mut egui::Ui, state: &mut TextToolState) {
     ui.label("输入 JSON:");
+    // desired_rows(6): 默认显示 6 行
     ui.add(egui::TextEdit::multiline(&mut state.input).desired_rows(6));
 
+    // horizontal: 水平布局
     ui.horizontal(|ui| {
+        // button: 按钮控件
         if ui.button("格式化").clicked() {
+            // serde_json::from_str(): 解析 JSON 字符串为 Value
+            // serde_json::Value: 通用 JSON 值类型
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&state.input) {
-                // to_string_pretty 格式化 JSON
+                // serde_json::to_string_pretty(): 格式化 JSON (带缩进)
                 state.output = serde_json::to_string_pretty(&value).unwrap_or_default();
             } else {
                 state.output = "JSON 格式错误".to_string();
@@ -583,25 +642,24 @@ fn show_json_tool(ui: &mut egui::Ui, state: &mut TextToolState) {
 }
 
 // ============================================================================
-// 第十部分：系统信息面板 - 展示 ProgressBar 和 Grid
+// ============================================================================
+// 第十部分：系统信息面板 (行 645-)
+// 核心控件: ProgressBar, Grid, ScrollArea
 // ============================================================================
 
-/**
- * 系统信息面板
- *
- * 展示的控件:
- * - ProgressBar: 进度条
- * - Grid: 表格布局
- * - ScrollArea: 滚动区域
- */
+// show_system_panel: 系统信息显示函数
 fn show_system_panel(ui: &mut egui::Ui, state: &mut SystemInfoState) {
+    // 标题
     ui.heading("💻 系统信息");
+    // 分隔线
     ui.separator();
 
+    // 垂直滚动区域
     egui::ScrollArea::vertical().show(ui, |ui| {
-        // 刷新按钮
+        // 水平布局，刷新按钮
         ui.horizontal(|ui| {
             if ui.button("刷新").clicked() {
+                // refresh(): 刷新系统信息
                 state.refresh();
             }
             ui.label(format!("刷新间隔: {} 秒", state.refresh_interval));
@@ -609,9 +667,11 @@ fn show_system_panel(ui: &mut egui::Ui, state: &mut SystemInfoState) {
 
         ui.separator();
 
+        // 引用系统实例
         let sys = &state.system;
 
         ui.label("系统信息:");
+        // indent: 缩进块
         ui.indent("sys_info", |ui| {
             ui.label(format!("CPU 核心数: {}", sys.cpus().len()));
         });
@@ -619,19 +679,30 @@ fn show_system_panel(ui: &mut egui::Ui, state: &mut SystemInfoState) {
         ui.separator();
 
         ui.label("CPU 使用率 (所有核心平均):");
-        // 计算平均 CPU 使用率
+
+        // .cpus(): 返回 CPU 信息数组
+        // .iter(): 迭代器
+        // .map(): 映射闭包
+        // .cpu_usage(): 获取单个 CPU 使用率
+        // .sum(): 求和
+        // / len() as f32: 计算平均值
         let cpu_usage: f32 = sys
             .cpus()
             .iter()
             .map(|c| c.cpu_usage())
             .sum::<f32>()
             / sys.cpus().len() as f32;
-        // ProgressBar - 进度条，值范围 0.0-1.0
+
+        // ProgressBar: 进度条控件
+        // .new(值): 值范围 0.0-1.0
+        // .text(): 显示文本
         ui.add(egui::ProgressBar::new(cpu_usage / 100.0).text(format!("{:.1}%", cpu_usage)));
 
         ui.separator();
 
         ui.label("内存使用:");
+        // total_memory() 返回 bytes
+        // / 1024.0 / 1024.0 / 1024.0: 转换为 GB
         let total_mem = sys.total_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
         let used_mem = sys.used_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
         let mem_percent = if total_mem > 0.0 { used_mem / total_mem } else { 0.0 };
@@ -675,24 +746,24 @@ fn show_system_panel(ui: &mut egui::Ui, state: &mut SystemInfoState) {
 }
 
 // ============================================================================
-// 第十一部分：计算器面板 - 展示 Slider 和简单计算
+// 第十一部分：计算器面板 (行 748-)
+// 核心控件: Slider
 // ============================================================================
 
-/**
- * 计算器面板
- *
- * 展示的控件:
- * - Slider: 滑动条，用于数值输入
- */
+// show_calculator_panel: 计算器面板函数
 fn show_calculator_panel(ui: &mut egui::Ui, state: &mut CalculatorState) {
+    // 标题
     ui.heading("🔢 计算器");
+    // 分隔线
     ui.separator();
 
     egui::ScrollArea::vertical().show(ui, |ui| {
-        // 标签页切换
+        // 标签页切换 - horizontal 布局
         ui.horizontal(|ui| {
             for tab in [CalculatorTab::Bmi, CalculatorTab::Simple] {
+                // == 比较
                 let selected = state.selected_tab == tab;
+                // selectable_label: 选择标签
                 if ui
                     .selectable_label(selected, tab.label())
                     .clicked()
@@ -848,23 +919,22 @@ fn shunting_yard(input: &str) -> Result<f64, String> {
 }
 
 // ============================================================================
-// 第十二部分：字体加载 - 展示文件系统操作
+// 第十二部分：字体加载 (行 921-)
+// 展示: 文件系统操作, FontDefinitions
 // ============================================================================
 
-/**
- * 查找中文字体文件
- *
- * Windows 常见中文字体路径:
- * - C:\Windows\Fonts\msyh.ttc (微软雅黑)
- * - C:\Windows\Fonts\simhei.ttf (黑体)
- * - C:\Windows\Fonts\simsun.ttc (宋体)
- */
+// find_chinese_font_path: 查找系统中文字体文件
 fn find_chinese_font_path() -> Result<PathBuf, AppError> {
+    // PathBuf::from(): 创建路径
     let font_dir = PathBuf::from("C:/Windows/Fonts");
+    // 字体文件名字数组
     let font_names = ["msyh.ttc", "simhei.ttf", "simsun.ttc", "msjh.ttc"];
 
+    // for 循环遍历
     for name in &font_names {
+        // .join(): 拼接路径
         let path = font_dir.join(name);
+        // .exists(): 检查文件是否存在
         if path.exists() {
             return Ok(path);
         }
@@ -872,15 +942,11 @@ fn find_chinese_font_path() -> Result<PathBuf, AppError> {
     Err(AppError::FontNotFound)
 }
 
-/**
- * 加载中文字体到 egui
- *
- * egui 字体系统:
- * - FontDefinitions: 字体定义结构
- * - FontData: 字体数据 (TTF/TTC 文件)
- * - font_data.insert(): 添加字体
- * - families: 指定哪些字体族使用该字体
- */
+// ============================================================================
+// 字体加载函数 (行 945-)
+// ============================================================================
+
+// load_chinese_fonts: 加载中文字体到 egui
 fn load_chinese_fonts() -> Result<egui::FontDefinitions, AppError> {
     let font_path = find_chinese_font_path()?;
     let data = std::fs::read(&font_path)?;
@@ -946,28 +1012,50 @@ fn load_chinese_fonts() -> Result<egui::FontDefinitions, AppError> {
  */
 
 // ============================================================================
-// main 函数
+// main 函数 (行 950-)
+// 程序入口点
 // ============================================================================
 
+// main: 程序入口函数，返回 Result 表示可能的错误
 fn main() -> Result<()> {
+    // NativeOptions: 原生窗口配置结构体
     let options = eframe::NativeOptions {
+        // viewport: 视口配置，控制窗口尺寸
+        // ViewportBuilder: 视口构建器
+        // .default(): 获取默认配置
+        // .with_inner_size([宽, 高]): 设置窗口内尺寸 1000x700
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1000.0, 700.0])
+            // .with_min_inner_size([宽, 高]): 设置窗口最小尺寸 800x500
             .with_min_inner_size([800.0, 500.0]),
+        // ..Default::default(): 结构体更新语法，其余字段用默认值
         ..Default::default()
     };
 
+    // eframe::run_native(): 启动原生窗口应用
+    // 参数1: 窗口标题，显示在标题栏
     eframe::run_native(
-        "个人工作台",
-        options,
+        "个人工作台", // title: 窗口标题
+        options,      // options: NativeOptions 窗口配置
+        // Box::new(|cc| {}): 装箱闭包，|cc| 接收 CreationContext
         Box::new(|cc| {
+            // load_chinese_fonts(): 加载中文字体
+            // if let Ok(fonts) = ...: 模式匹配，成功时执行
             if let Ok(fonts) = load_chinese_fonts() {
+                // cc.egui_ctx: egui 上下文
+                // .set_fonts(): 设置自定义字体定义
                 cc.egui_ctx.set_fonts(fonts);
             }
+            // Ok(Box::new()): 成功创建并返回 App 实例
+            // DashboardApp::default(): 调用 Default 实现创建默认状态
             Ok(Box::new(DashboardApp::default()))
         }),
     )
+    // .map_err(): 转换错误类型
+    // |e| 闭包参数接收错误
+    // anyhow::anyhow!(): 将错误包装为 anyhow 类型
     .map_err(|e| anyhow::anyhow!("运行应用失败: {}", e))?;
 
+    // Ok(()): 成功退出程序
     Ok(())
 }
