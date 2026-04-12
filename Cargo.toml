@@ -45,6 +45,8 @@ rand = { version = "0.8.5" }
 regex = { version = "1.12.2" }
 chrono = { version = "0.4.42" }
 base64 = "0.22.1"
+urlencoding = "2.1.3"
+sysinfo = "0.33"
 tempfile = "3.23.0"
 once_cell = "1.21.3"
 
@@ -52,23 +54,25 @@ once_cell = "1.21.3"
 clap = { version = "4.5.53" }
 
 #可视化
-eframe = { version = "0.33.2" }
-egui = "0.33.2"
+eframe = { version = "0.34.1", features = ["wgpu", "default_fonts"] }
+egui = "0.34.1"
+iced = "0.14"
+wgpu = "29"
 
 # 数学计算
 nalgebra = "0.33"
 rand_xoshiro = "0.8"
-egui_file = "0.24.0"
-egui_table = "0.6.0"
+egui_file = "0.25"
+egui_table = "0.8"
 egui_dnd = "0.14.0"
-egui_animation = "0.10.0"
-egui-file-dialog = "0.12.0"
+egui_animation = "0.11"
+egui-file-dialog = "0.13"
 egui_graphs = "0.29.0"
-egui-toast = "0.19.1"
-egui-modal = "0.6.0"
-egui_logger = "0.9.0"
-egui-dropdown = "0.13.0"
-egui_code_editor = "0.2.20"
+# egui-modal 只支持 egui 0.30，移除
+# egui-modal = "0.6.0"
+egui_logger = "0.9.3"
+egui-dropdown = "0.14"
+egui_code_editor = "0.2.22"
 
 # 配置管理
 config = "0.15.19"                 # 多格式配置
