@@ -1,5 +1,5 @@
 //访问父级目录的库得通过crate来访问
-use ztool::mod01::hosting;
+use study_example::mod01::hosting;
 
 fn serve_order() {
     self::back_of_house::cook_order();
@@ -32,5 +32,5 @@ mod tests {
 
 fn main() {
     println!("Hello, world!");
-    ztool::mod01::hosting::add_to_waitlist();
+    study_example::mod01::hosting::add_to_waitlist();
 }

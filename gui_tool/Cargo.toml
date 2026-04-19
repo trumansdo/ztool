@@ -1,0 +1,24 @@
+[package]
+name = "gui_tool"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+iced.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+pnet.workspace = true
+
+anyhow.workspace = true
+thiserror.workspace = true
+log.workspace = true
+tracing.workspace = true
+futures.workspace = true
+async-trait = "0.1"
+
+[features]
+default = ["net_scan", "net_capture", "json_fmt"]
+
+net_scan = []
+net_capture = []
+json_fmt = []
