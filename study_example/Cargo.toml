@@ -43,22 +43,21 @@ once_cell.workspace = true
 
 clap.workspace = true
 
-eframe.workspace = true
-egui.workspace = true
-iced.workspace = true
-wgpu.workspace = true
+eframe = { version = "0.34.1", features = ["wgpu", "default_fonts"] }
+egui = "0.34.1"
+wgpu = "29"
 
 nalgebra.workspace = true
 rand_xoshiro.workspace = true
-egui_file.workspace = true
-egui_table.workspace = true
-egui_dnd.workspace = true
-egui_animation.workspace = true
-egui-file-dialog.workspace = true
-egui_graphs.workspace = true
-egui_logger.workspace = true
-egui-dropdown.workspace = true
-egui_code_editor.workspace = true
+egui_file = "0.25"
+egui_table = "0.8"
+egui_dnd = "0.14.0"
+egui_animation = "0.11"
+egui-file-dialog = "0.13"
+egui_graphs = "0.29.0"
+egui_logger = "0.9.3"
+egui-dropdown = "0.14"
+egui_code_editor = "0.2.22"
 
 config.workspace = true
 toml.workspace = true

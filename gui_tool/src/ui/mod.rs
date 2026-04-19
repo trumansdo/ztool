@@ -2,6 +2,7 @@ use crate::features::json_fmt::JsonFormatter;
 use crate::features::net_capture::PacketCapture;
 use crate::features::net_scan::NetScanner;
 use crate::features::theme;
+use crate::features::ui_libs::UiLibs;
 use iced::widget::{container, mouse_area, row, text, Column};
 use iced::{Color, Element, Task};
 
@@ -12,6 +13,7 @@ pub struct App {
     json_formatter: JsonFormatter,
     net_scanner: NetScanner,
     packet_capture: PacketCapture,
+    ui_libs: UiLibs,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -20,6 +22,7 @@ pub enum Tab {
     JsonFmt,
     NetScan,
     NetCapture,
+    UiLibs,
 }
 
 #[derive(Debug, Clone)]
@@ -29,6 +32,7 @@ pub enum Message {
     JsonFmt(crate::features::json_fmt::Msg),
     NetScan(crate::features::net_scan::Msg),
     NetCapture(crate::features::net_capture::Msg),
+    UiLibs(crate::features::ui_libs::Msg),
 }
 
 impl App {
@@ -36,12 +40,14 @@ impl App {
         let mut expanded = std::collections::HashSet::new();
         expanded.insert("网络工具".to_string());
         expanded.insert("数据工具".to_string());
+        expanded.insert("组件库".to_string());
         Self {
             selected_tab: Tab::JsonFmt,
             expanded_categories: expanded,
             json_formatter: JsonFormatter::new(),
             net_scanner: NetScanner::new(),
             packet_capture: PacketCapture::new(),
+            ui_libs: UiLibs::new(),
         }
     }
 
@@ -76,6 +82,10 @@ impl App {
                 let _ = self.packet_capture.update(m);
                 Task::none()
             }
+            Message::UiLibs(m) => {
+                self.ui_libs.update(m);
+                Task::none()
+            }
         }
     }
 
@@ -95,6 +105,10 @@ impl App {
                 .packet_capture
                 .view()
                 .map(Message::NetCapture),
+            Tab::UiLibs => self
+                .ui_libs
+                .view()
+                .map(Message::UiLibs),
         };
 
         container(
@@ -231,6 +245,16 @@ fn view_menu_panel(
         Column::with_children(vec![category_row("数据工具", "📊")]).into()
     };
 
+    let ui_libs_tools: Element<'static, Message> = if expanded_categories.contains("组件库") {
+        let col: Element<'static, Message> =
+            Column::with_children(vec![category_row("组件库", "📦"), item_row(Tab::UiLibs, "", "iced_aw")])
+                .spacing(theme::size(0.1).0 as u32)
+                .into();
+        col
+    } else {
+        Column::with_children(vec![category_row("组件库", "📦")]).into()
+    };
+
     let menu_col: Element<'static, Message> = Column::with_children(vec![
         text("菜单")
             .size(theme::font(1.1))
@@ -243,6 +267,10 @@ fn view_menu_panel(
             .size(theme::font(0.3))
             .into(),
         data_tools,
+        text("")
+            .size(theme::font(0.3))
+            .into(),
+        ui_libs_tools,
     ])
     .spacing(theme::size(0.2).0 as u32)
     .into();

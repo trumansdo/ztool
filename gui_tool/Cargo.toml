@@ -5,8 +5,20 @@ edition.workspace = true
 
 [dependencies]
 iced.workspace = true
-tokio.workspace = true
+iced_aw.workspace = true
+native-theme-iced.workspace = true
+iced_aksel.workspace = true
+iced_modifier.workspace = true
+iced_plot.workspace = true
+iced_toaster.workspace = true
+iced_plus.workspace = true
+iconflow.workspace = true
+iced_navigation.workspace = true
+iced_split.workspace = true
+
+
 serde_json.workspace = true
+tokio.workspace = true
 pnet.workspace = true
 
 anyhow.workspace = true
@@ -14,11 +26,12 @@ thiserror.workspace = true
 log.workspace = true
 tracing.workspace = true
 futures.workspace = true
-async-trait = "0.1"
+async-trait.workspace = true
 
 [features]
-default = ["net_scan", "net_capture", "json_fmt"]
+default = ["net_scan", "net_capture", "json_fmt", "iced_aw"]
 
 net_scan = []
 net_capture = []
 json_fmt = []
+iced_aw = []

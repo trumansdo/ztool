@@ -2,4 +2,4 @@
 linker = "rust-lld"
 
 [build]
-jobs = 1
+jobs = 4
