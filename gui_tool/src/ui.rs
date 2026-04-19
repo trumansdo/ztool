@@ -34,6 +34,7 @@ pub enum Message {
     UiLibs(crate::features::ui_libs::Msg),
 }
 
+use anyhow::Result;
 use iced::{Element, Task};
 
 fn new() -> (App, Task<Message>) {
@@ -56,7 +57,7 @@ fn theme(_state: &App) -> iced::Theme {
     App::theme()
 }
 
-pub fn run() -> iced::Result {
+pub fn run() -> Result<()> {
     iced::application(new, update, view)
         .title(title)
         .theme(theme)
@@ -66,5 +67,6 @@ pub fn run() -> iced::Result {
             resizable: true,
             ..iced::window::Settings::default()
         })
-        .run()
+        .run()?;
+    Ok(())
 }

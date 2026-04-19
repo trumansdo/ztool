@@ -1,30 +1,28 @@
 use crate::features::theme;
-use iced::widget::{button, column, container, text, text_input, Row};
+use iced::widget::{button, column, container, text, text_editor, Row};
+use iced::Pixels;
 use iced::Element;
 
-use super::JsonFormatter;
+use super::{JsonFormatter, Msg};
 
-pub fn view(formatter: &JsonFormatter) -> Element<'_, super::Msg> {
-    use super::Msg;
-
-    let input_field = text_input("输入JSON...", &formatter.input)
-        .on_input(Msg::InputChanged)
+pub fn view(formatter: &JsonFormatter) -> Element<'_, Msg> {
+    let input_editor = text_editor(&formatter.input)
+        .on_action(Msg::InputChanged)
         .padding(theme::padding2(0.5, 1.0))
-        .width(iced::Length::Fill)
-        .size(theme::font(1.0));
+        .width(Pixels(400.0))
+        .height(Pixels(150.0))
+        .placeholder("输入JSON...");
 
     let error_text = if let Some(ref e) = formatter.error {
-        text(e)
+        text(e.to_string())
             .color([1.0, 0.3, 0.3])
             .size(theme::font(0.9))
     } else {
         text("").size(theme::font(0.9))
     };
 
-    let output_field = text_input("输出结果", &formatter.output)
-        .padding(theme::padding2(0.5, 1.0))
-        .width(iced::Length::Fill)
-        .size(theme::font(1.0));
+    let output_field = text("输出结果")
+        .size(theme::font(0.9));
 
     let btn_row = Row::with_children(vec![
         button("格式化")
@@ -45,15 +43,24 @@ pub fn view(formatter: &JsonFormatter) -> Element<'_, super::Msg> {
 
     let sp = |size| text("").size(size);
 
+    let output_display = container(
+        text(&formatter.output)
+            .size(theme::font(0.9))
+    )
+    .padding(theme::padding2(0.5, 1.0))
+    .width(Pixels(400.0))
+    .height(Pixels(150.0));
+
     container(
         column![
             text("JSON格式化").size(theme::font(1.1)),
             sp(theme::font(0.3)),
-            input_field,
+            input_editor,
             sp(theme::font(0.3)),
             error_text,
             sp(theme::font(0.3)),
             output_field,
+            output_display,
             sp(theme::font(0.5)),
             btn_row,
         ]
