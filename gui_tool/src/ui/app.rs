@@ -1,7 +1,7 @@
-use crate::features::json_fmt::{JsonFormatter, Msg as JsonFmtMsg};
-use crate::features::net_capture::{PacketCapture, Msg as NetCaptureMsg};
-use crate::features::net_scan::{NetScanner, Msg as NetScanMsg};
-use crate::features::ui_libs::{UiLibs, Msg as UiLibsMsg};
+use crate::features::json_fmt::JsonFormatter;
+use crate::features::net_capture::PacketCapture;
+use crate::features::net_scan::NetScanner;
+use crate::features::ui_libs::UiLibs;
 use iced::widget::container;
 use iced::{Element, Task};
 
@@ -61,7 +61,7 @@ impl App {
                 Task::none()
             }
             Message::UiLibs(m) => {
-                crate::features::ui_libs::update(&mut self.ui_libs, m);
+                let _ = crate::features::ui_libs::update(&mut self.ui_libs, m);
                 Task::none()
             }
         }

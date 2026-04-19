@@ -3,7 +3,7 @@ use iced::{
     Color, Element, Length,
 };
 
-use crate::ui::{App, Message, Tab};
+use crate::ui::{Message, Tab};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TreeItem {
@@ -75,6 +75,18 @@ pub fn render_tree_item(
     .spacing(0)
     .align_y(Alignment::Center);
 
+    let msg = if has_children {
+        Message::ToggleCategory(item.id.clone())
+    } else {
+        Message::TabSelected(match item.id.as_str() {
+            "json_fmt" => Tab::JsonFmt,
+            "net_scan" => Tab::NetScan,
+            "net_capture" => Tab::NetCapture,
+            "ui_libs_page" => Tab::UiLibs,
+            _ => Tab::JsonFmt,
+        })
+    };
+
     let item_el: Element<'static, Message> = mouse_area(
         container(row)
             .width(Length::Fill)
@@ -85,17 +97,7 @@ pub fn render_tree_item(
                 ..Default::default()
             })
     )
-    .on_press(if has_children {
-        super::Message::ToggleCategory(item.id.clone())
-    } else {
-        super::Message::TabSelected(match item.id.as_str() {
-            "json_fmt" => super::Tab::JsonFmt,
-            "net_scan" => super::Tab::NetScan,
-            "net_capture" => super::Tab::NetCapture,
-            "ui_libs_page" => super::Tab::UiLibs,
-            _ => super::Tab::JsonFmt,
-        })
-    })
+    .on_press(msg)
     .into();
 
     if has_children && is_expanded {

@@ -1,5 +1,4 @@
-use crate::features::theme;
-use iced::{Element, Task};
+use iced::Task;
 
 #[derive(Default)]
 pub struct NetScanner {

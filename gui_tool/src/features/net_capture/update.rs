@@ -1,4 +1,4 @@
-use iced::{Element, Task};
+use iced::Task;
 
 #[derive(Default)]
 pub struct PacketCapture {

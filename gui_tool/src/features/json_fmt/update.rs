@@ -1,6 +1,4 @@
-use crate::features::theme;
-use iced::widget::{button, column, container, text, text_input, Row};
-use iced::{Element, Length, Task};
+use iced::Task;
 
 #[derive(Default)]
 pub struct JsonFormatter {
