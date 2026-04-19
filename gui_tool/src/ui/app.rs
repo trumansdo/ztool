@@ -1,6 +1,6 @@
 use crate::features::json_fmt::JsonFormatter;
 use crate::features::net_capture::PacketCapture;
-use crate::features::net_scan::NetScanner;
+use crate::features::net_port_scan::NetScanner;
 use crate::features::ui_libs::UiLibs;
 use iced::widget::container;
 use iced::{Element, Task};
@@ -12,7 +12,7 @@ pub struct App {
     pub selected_tab: Tab,
     pub expanded_categories: std::collections::HashSet<String>,
     pub json_formatter: JsonFormatter,
-    pub net_scanner: NetScanner,
+    pub net_port_scan: NetScanner,
     pub packet_capture: PacketCapture,
     pub ui_libs: UiLibs,
 }
@@ -28,7 +28,7 @@ impl App {
             selected_tab: Tab::JsonFmt,
             expanded_categories: expanded,
             json_formatter: JsonFormatter::new(),
-            net_scanner: NetScanner::new(),
+            net_port_scan: NetScanner::new(),
             packet_capture: PacketCapture::new(),
             ui_libs: UiLibs::new(),
         }
@@ -52,8 +52,8 @@ impl App {
                 let _ = crate::features::json_fmt::update(&mut self.json_formatter, m);
                 Task::none()
             }
-            Message::NetScan(m) => {
-                let _ = crate::features::net_scan::update(&mut self.net_scanner, m);
+            Message::NetPortScan(m) => {
+                let _ = crate::features::net_port_scan::update(&mut self.net_port_scan, m);
                 Task::none()
             }
             Message::NetCapture(m) => {
@@ -77,7 +77,7 @@ impl App {
 
         let content: Element<'_, Message> = match self.selected_tab {
             Tab::JsonFmt => crate::features::json_fmt::view(&self.json_formatter).map(Message::JsonFmt),
-            Tab::NetScan => crate::features::net_scan::view(&self.net_scanner).map(Message::NetScan),
+            Tab::NetPortScan => crate::features::net_port_scan::view(&self.net_port_scan).map(Message::NetPortScan),
             Tab::NetCapture => crate::features::net_capture::view(&self.packet_capture).map(Message::NetCapture),
             Tab::UiLibs => crate::features::ui_libs::view(&self.ui_libs).map(Message::UiLibs),
         };

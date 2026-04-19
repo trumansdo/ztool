@@ -9,16 +9,14 @@ pub fn view_menu_panel(
     selected: Tab,
 ) -> Element<'static, Message> {
     let items = [
-        TreeItem::new("net_tools", "网络工具").child(
-            TreeItem::new("net_scan", "网络扫描").child(
-                TreeItem::new("net_capture", "网络抓包"),
-            ),
-        ),
+        TreeItem::new("net_tools", "网络工具")
+            .child(TreeItem::new("net_port_scan", "端口扫描"))
+            .child(TreeItem::new("net_capture", "网络抓包")),
         TreeItem::new("data_tools", "数据工具").child(
             TreeItem::new("json_fmt", "JSON格式化"),
         ),
         TreeItem::new("ui_libs", "组件库").child(
-            TreeItem::new("ui_libs_page", "iced_aw"),
+            TreeItem::new("ui_libs_page", "组件示例"),
         ),
     ];
 

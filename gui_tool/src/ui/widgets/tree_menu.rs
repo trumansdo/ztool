@@ -80,7 +80,7 @@ pub fn render_tree_item(
     } else {
         Message::TabSelected(match item.id.as_str() {
             "json_fmt" => Tab::JsonFmt,
-            "net_scan" => Tab::NetScan,
+            "net_port_scan" => Tab::NetPortScan,
             "net_capture" => Tab::NetCapture,
             "ui_libs_page" => Tab::UiLibs,
             _ => Tab::JsonFmt,

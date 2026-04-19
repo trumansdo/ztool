@@ -8,7 +8,7 @@ pub use app::App;
 pub enum Tab {
     #[default]
     JsonFmt,
-    NetScan,
+    NetPortScan,
     NetCapture,
     UiLibs,
 }
@@ -17,7 +17,7 @@ impl From<Tab> for String {
     fn from(t: Tab) -> Self {
         match t {
             Tab::JsonFmt => "json_fmt".to_string(),
-            Tab::NetScan => "net_scan".to_string(),
+            Tab::NetPortScan => "net_port_scan".to_string(),
             Tab::NetCapture => "net_capture".to_string(),
             Tab::UiLibs => "ui_libs_page".to_string(),
         }
@@ -29,7 +29,7 @@ pub enum Message {
     ToggleCategory(String),
     TabSelected(Tab),
     JsonFmt(crate::features::json_fmt::Msg),
-    NetScan(crate::features::net_scan::Msg),
+    NetPortScan(crate::features::net_port_scan::Msg),
     NetCapture(crate::features::net_capture::Msg),
     UiLibs(crate::features::ui_libs::Msg),
 }
