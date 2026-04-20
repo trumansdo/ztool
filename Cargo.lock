@@ -7710,6 +7710,7 @@ dependencies = [
  "humantime-serde",
  "hyper",
  "hyper-util",
+ "iced 0.14.0",
  "indexmap 2.14.0",
  "itertools",
  "log",

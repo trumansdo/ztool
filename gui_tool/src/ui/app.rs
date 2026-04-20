@@ -3,6 +3,7 @@ use crate::features::net_capture::PacketCapture;
 use crate::features::net_port_scan::NetScanner;
 use crate::features::ui_libs::UiLibs;
 use iced::widget::container;
+use iced::widget::Row;
 use iced::{Element, Task};
 
 use super::{Message, Tab};
@@ -78,7 +79,6 @@ impl App {
 
     /// 渲染应用视图：左侧菜单+右侧内容
     pub fn view(&self) -> Element<'_, Message> {
-        use iced::widget::Row;
 
         // 渲染左侧菜单面板
         let menu_panel = super::menu::view_menu_panel(

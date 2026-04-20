@@ -132,9 +132,29 @@ pub fn scan_port(ip: Ipv4Addr, port: u16, timeout: Duration) -> PortInfo {
 }
 
 pub fn scan_host(ip: Ipv4Addr, ports: &[u16]) -> Vec<PortInfo> {
+    eprintln!("[scan_host] 开始扫描主机 {}, 端口数: {}", ip, ports.len());
     let timeout = Duration::from_millis(500);
-    ports.iter()
+    let results: Vec<PortInfo> = ports.iter()
         .map(|&port| scan_port(ip, port, timeout))
         .filter(|p| p.is_open)
-        .collect()
+        .collect();
+    eprintln!("[scan_host] 扫描完成, 发现 {} 个开放端口", results.len());
+    results
+}
+
+pub fn scan_host_with_logs(ip: Ipv4Addr, ports: &[u16]) -> (Vec<PortInfo>, Vec<String>) {
+    let timeout = Duration::from_millis(500);
+    let mut logs = Vec::new();
+    let results: Vec<PortInfo> = ports.iter()
+        .map(|&port| {
+            let info = scan_port(ip, port, timeout);
+            if info.is_open {
+                logs.push(format!("[*] 端口 {} 开放 ({:?})", port, info.service));
+            }
+            info
+        })
+        .filter(|p| p.is_open)
+        .collect();
+    logs.push(format!("[*] 主机 {} 扫描完成, 共 {} 个开放端口", ip, results.len()));
+    (results, logs)
 }

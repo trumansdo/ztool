@@ -98,28 +98,68 @@ pub fn update(scanner: &mut NetScanner, msg: Msg) -> Task<Msg> {
             scanner.scan_mode = mode;
             Task::none()
         }
-        // 开始扫描：初始化扫描状态，记录日志
+        // 开始扫描：在后台线程执行真实的端口扫描
         Msg::StartScan => {
             let target = scanner.target.clone();
             let mode = scanner.scan_mode;
-            
+
             if target.is_empty() {
                 scanner.results.push("请输入目标IP或网段".to_string());
                 return Task::none();
             }
-            
+
             scanner.is_scanning = true;
             scanner.results.clear();
             scanner.logs.clear();
             scanner.open_ports.clear();
             scanner.results.push(format!("开始扫描: {} ({})", target, mode.label()));
             scanner.logs.push(format!("[*] 开始扫描目标: {} (模式: {})", target, mode.label()));
-            
+
             let ports = mode.ports();
             let port_count = ports.len();
             scanner.logs.push(format!("[*] 共 {} 个端口需要扫描", port_count));
-            
-            Task::none()
+
+            // 解析目标IP列表
+            let ips = match scan::parse_ip_range(&target) {
+                Ok(ip_list) => ip_list,
+                Err(e) => {
+                    scanner.is_scanning = false;
+                    scanner.results.push(format!("目标解析失败: {}", e));
+                    scanner.logs.push(format!("[x] 目标解析失败: {}", e));
+                    return Task::none();
+                }
+            };
+
+            let ip_count = ips.len();
+            scanner.logs.push(format!("[*] 共 {} 个主机需要扫描", ip_count));
+
+            // 使用 spawn_blocking 在 tokio 线程池中运行阻塞 I/O
+            let ips_clone = ips.clone();
+            let ports_clone = ports.clone();
+
+            eprintln!("[update] 开始执行 Task::perform, ips={:?}, ports={}", ips_clone, ports_clone.len());
+
+            Task::perform(
+                tokio::task::spawn_blocking(move || {
+                    let mut all_results: Vec<(String, Vec<PortInfo>)> = Vec::new();
+                    let mut scan_logs: Vec<String> = Vec::new();
+
+                    for ip in &ips_clone {
+                        scan_logs.push(format!("[*] 扫描主机: {}", ip));
+                        let (open_ports, port_logs) = scan::scan_host_with_logs(*ip, &ports_clone);
+                        scan_logs.extend(port_logs);
+                        if !open_ports.is_empty() {
+                            all_results.push((ip.to_string(), open_ports));
+                        }
+                    }
+
+                    (all_results, scan_logs)
+                }),
+                |result| {
+                    let (ports, logs) = result.unwrap();
+                    Msg::ScanResult(ports, logs)
+                }
+            )
         }
         // 处理扫描完成：格式化结果输出
         Msg::ScanResult(ports, scan_logs) => {
