@@ -4,10 +4,12 @@ use iced::Element;
 use super::{Message, Tab};
 use super::widgets::{render_tree_item, TreeItem};
 
+/// 渲染左侧菜单面板
 pub fn view_menu_panel(
     expanded_categories: &std::collections::HashSet<String>,
     selected: Tab,
 ) -> Element<'static, Message> {
+    // 定义菜单树结构
     let items = [
         TreeItem::new("net_tools", "网络工具")
             .child(TreeItem::new("net_port_scan", "端口扫描"))
@@ -20,13 +22,16 @@ pub fn view_menu_panel(
         ),
     ];
 
+    // 获取当前选中的ID
     let selected_id: String = selected.into();
 
+    // 垂直排列所有菜单项
     let mut col = Column::new().spacing(0);
     for item in &items {
         col = col.push(render_tree_item(item, 0, expanded_categories, &selected_id));
     }
 
+    // 包装成固定宽度容器
     container(col)
         .width(iced::Length::Fixed(150.0))
         .into()
