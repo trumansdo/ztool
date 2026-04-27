@@ -1,38 +1,35 @@
-use iced::widget::{container, Column};
+use crate::ui::widgets::menu_bar::{MenuItem, menu_bar as custom_menu_bar, dropdown};
+use crate::ui::widgets::Layered;
 use iced::Element;
 
 use super::{Message, Tab};
-use super::widgets::{render_tree_item, TreeItem};
 
-/// 渲染左侧菜单面板
-pub fn view_menu_panel(
-    expanded_categories: &std::collections::HashSet<String>,
-    selected: Tab,
-) -> Element<'static, Message> {
-    // 定义菜单树结构
-    let items = [
-        TreeItem::new("net_tools", "网络工具")
-            .child(TreeItem::new("net_port_scan", "端口扫描"))
-            .child(TreeItem::new("net_capture", "网络抓包")),
-        TreeItem::new("data_tools", "数据工具").child(
-            TreeItem::new("json_fmt", "JSON格式化"),
-        ),
-        TreeItem::new("ui_libs", "组件库").child(
-            TreeItem::new("ui_libs_page", "组件示例"),
-        ),
-    ];
+pub fn menu_items() -> Vec<MenuItem<Message>> {
+    vec![
+        MenuItem::new("网络工具")
+            .item("端口扫描", Message::TabSelected(Tab::NetPortScan))
+            .item("网络抓包", Message::TabSelected(Tab::NetCapture)),
+        MenuItem::new("数据工具")
+            .item("JSON格式化", Message::TabSelected(Tab::JsonFmt)),
+        MenuItem::new("组件库")
+            .item("组件示例", Message::TabSelected(Tab::UiLibs)),
+    ]
+}
 
-    // 获取当前选中的ID
-    let selected_id: String = selected.into();
+pub fn menu_bar(open_index: Option<usize>) -> Element<'static, Message> {
+    custom_menu_bar(&menu_items(), open_index, Message::ToggleMenu)
+}
 
-    // 垂直排列所有菜单项
-    let mut col = Column::new().spacing(0);
-    for item in &items {
-        col = col.push(render_tree_item(item, 0, expanded_categories, &selected_id));
+pub fn view_dropdown(index: usize) -> Option<Layered<'static, Message>> {
+    let items = menu_items();
+    if index >= items.len() {
+        return None;
     }
-
-    // 包装成固定宽度容器
-    container(col)
-        .width(iced::Length::Fixed(150.0))
-        .into()
+    let left = match index {
+        0 => 10.0,
+        1 => 85.0,
+        2 => 165.0,
+        _ => return None,
+    };
+    Some(dropdown(items[index].entries(), index, left))
 }

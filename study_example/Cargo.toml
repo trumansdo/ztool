@@ -43,14 +43,12 @@ once_cell.workspace = true
 
 clap.workspace = true
 
-iced.workspace = true
-
 eframe.workspace = true
-wgpu.workspace = true
+iced.workspace = true
+egui.workspace = true
 
 nalgebra.workspace = true
 rand_xoshiro.workspace = true
-egui.workspace = true
 egui_file.workspace = true
 egui_table.workspace = true
 egui_dnd.workspace = true

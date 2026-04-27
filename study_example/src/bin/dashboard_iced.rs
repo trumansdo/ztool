@@ -299,15 +299,8 @@ struct DashboardState {
 /// fn new() -> (State, Task<Message>) { ... }
 /// ```
 fn new() -> (DashboardState, Task<Message>) {
-    // 创建默认状态
     let mut state = DashboardState::default();
-
-    // 初始化系统信息
-    // System::default() 创建空实例，需要 refresh_all() 填充数据
     state.system.refresh_all();
-
-    // 返回状态和无任务
-    // Task::none() 类似于返回空的 Command
     (state, Task::none())
 }
 
@@ -1014,7 +1007,7 @@ fn main() -> iced::Result {
         .theme(theme)
         .window(window::Settings {
             size: Size::new(1200.0, 800.0),
-            min_size: Some(Size::new(0.0, 0.0)), // 设置最小窗口尺寸
+            min_size: Some(Size::new(0.0, 0.0)),
             resizable: true,
             ..window::Settings::default()
         })

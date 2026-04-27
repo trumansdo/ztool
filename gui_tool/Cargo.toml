@@ -19,6 +19,7 @@ iced_split.workspace = true
 
 serde_json.workspace = true
 tokio.workspace = true
+rayon.workspace = true
 pnet.workspace = true
 
 anyhow.workspace = true

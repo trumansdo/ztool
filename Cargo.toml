@@ -68,10 +68,10 @@ iconflow = "1.0.0"
 iced_navigation = { version = "1.6.0", features = ["drawer"] }
 iced_split = "0.1.0"
 async-trait = "^0.1"
+rayon = "1.10"
 
-eframe = { version = "0.34.1", features = ["wgpu", "default_fonts"] }
 egui = "0.34.1"
-wgpu = "29"
+eframe = { version = "0.34.1", features = ["wgpu", "default_fonts"] }
 egui_file = "0.25"
 egui_table = "0.8"
 egui_dnd = "0.14.0"
