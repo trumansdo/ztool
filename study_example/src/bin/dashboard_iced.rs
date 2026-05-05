@@ -1001,6 +1001,10 @@ fn view_calculator_panel(state: &DashboardState) -> Element<'_, Message> {
 /// - `.antialiasing(bool)`: 抗锯齿
 /// - `.font(Font)`: 默认字体
 /// - `.centered()`: 窗口居中
+///
+/// ## Rust 概念 — `iced::Result` vs `Result`
+/// `iced::Result` = `Result<(), iced::Error>`，专用于 iced 应用启动。
+/// `window::Settings` 结构体的 `..Default::default()` 是结构体更新语法。
 fn main() -> iced::Result {
     iced::application(new, update, view)
         .title(title)

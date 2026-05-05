@@ -1017,6 +1017,10 @@ fn load_chinese_fonts() -> Result<egui::FontDefinitions, AppError> {
 // ============================================================================
 
 // main: 程序入口函数，返回 Result 表示可能的错误
+// ## Rust 概念 — Result<()> 返回类型
+// main 函数返回 Result，允许使用 ? 运算符传播错误。
+// anyhow::Result<()> = Result<(), anyhow::Error>，可接收任意 Error 类型。
+// `anyhow::anyhow!("...")` 创建临时的通用错误对象。
 fn main() -> Result<()> {
     // NativeOptions: 原生窗口配置结构体
     let options = eframe::NativeOptions {

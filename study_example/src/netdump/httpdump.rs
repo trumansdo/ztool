@@ -1,3 +1,37 @@
+//! # HTTP 流量抓包与 OSI 四层解析
+//!
+//! 逐层解析以太网 → IPv4 → TCP → HTTP，提取完整的 HTTP 头部信息。
+//! 演示了 OSI 模型在实际代码中的体现。
+//!
+//! ## OSI 七层模型与 TCP/IP 四层模型
+//! ```
+//! OSI 七层            TCP/IP 四层         pnet 实现
+//! ─────────          ──────────         ─────────
+//! 应用层(HTTP...) ─┐
+//! 表示层(SSL...)   ├── 应用层 ────────  手动解析 HTTP
+//! 会话层(RPC...)  ─┘
+//! 传输层(TCP/UDP) ─── 传输层 ────────  TcpPacket / UdpPacket
+//! 网络层(IP...)   ─── 网络层 ────────  Ipv4Packet / Ipv6Packet
+//! 链路层(Ethernet) ─ 网络接口层 ──────  EthernetPacket
+//! 物理层                (硬件)
+//! ```
+//!
+//! ## Rust 概念 — 生命周期标注 `<'a>`
+//! `TcpHolisticPacket<'a>` 持有对 pnet 解析结果的引用，
+//! 需要标注生命周期 'a 表示所有引用必须与原始数据包一样长。
+//!
+//! ## Rust 概念 — `Display` trait 手动实现
+//! 为 `TcpHolisticPacket` 实现 `Display`，可以用在 `println!("{}", pkt)` 等格式宏中。
+//! 也可以直接用 `{}` 格式化而不需要 `{:?}`。
+//!
+//! ## Rust 概念 — `trait` 为外部类型实现
+//! `impl<'a> PacketSummary for pcap::Packet<'a>` — 为第三方 crate 的类型实现自定义 trait。
+//! Rust 允许在定义 trait 的 crate 中为任意类型实现（孤儿规则）。
+//!
+//! ## Rust 概念 — itertools `tuple_windows`
+//! `tuple_windows::<(_, _, _, _)>()` 返回连续 4 个元素的滑动窗口。
+//! 用于查找 HTTP 头/体分隔标记 `\r\n\r\n`（4 个字节）。
+
 use std::{error::Error, fmt::Display, io::Cursor, sync::mpsc, thread};
 
 use byteorder::{BigEndian, ReadBytesExt};
@@ -10,33 +44,14 @@ use pnet::packet::{
     tcp::{TcpFlags, TcpOptionNumbers, TcpPacket}, Packet,
 };
 
-/**
-* OSI七层模型
-* -------> 应用层(HTTP, FTP, SMTP, DNS, Telnet, SNMP, NFS)
-* ------> 表示层(SSL/TLS, MIME, ASCII, JPEG, GIF, MPEG)
-* -----> 会话层(NFS, SQL, RPC, NetBIOS)
-* ----> 传输层(TCP, UDP, SCTP)
-* ---> 网络层(IP, ICMP, IGMP, ARP, RARP)
-* --> 数据链路层(PPP, Ethernet, Frame Relay, HDLC)
-* -> 物理层(Ethernet, Wi-Fi, DSL, ISDN, FDDI)
-
-* TCP/IP四层模型
-* ----> 应用层(HTTP, FTP, SMTP, DNS)
-* ---> 传输层(TCP, UDP)
-* --> 网络层(IP, ICMP, IGMP)
-* -> 网络接口层(Ethernet, Wi-Fi, DSL, ATM)
-*
-* 在pnet中，有四层：
-* Layer 2, datalink layer;  第 2 层，数据链路层； 默认此层
-* Layer 3, network layer;  第 3 层，网络层；
-* Layer 4, transport layer. 第 4 层，传输层。
-*
-* 在应用中，我们一般都是先通过以太网接口打开 数据链路层，
-* 然后一层一层判断其header与payload，把payload交给对应的上层协议packet解析
-* 详细报文格式可以参考华为提供的：
-* https://support.huawei.com/enterprise/zh/doc/EDOC1100174722/fc60e39
-*/
-/// 定义一个结构体，用于保存各层的packet数据
+/// 四层数据包的全景视图
+///
+/// 保存以太网、IPv4、TCP 各层解析结果的引用。
+///
+/// ## Rust 概念 — 生命周期 `'a`
+/// 此结构体的所有字段都是对原始数据包数据的借用引用。
+/// `'a` 生命周期参数确保这些引用不会比原始数据活得更久（防止悬垂指针）。
+/// 编译器在编译时检查生命周期约束。
 #[derive(Debug, PartialEq)]
 pub struct TcpHolisticPacket<'a> {
     identification: u16,
@@ -46,9 +61,26 @@ pub struct TcpHolisticPacket<'a> {
     tcp_packet: &'a TcpPacket<'a>,
 }
 
+/// 数据包摘要 trait — 为各层实现统一的信息格式化接口
+///
+/// ## Rust 概念 — trait 定义
+/// `pub trait PacketSummary` 声明了一个公共接口，只要实现了 `summary()` 方法，
+/// 任何类型都可以被格式化为摘要字符串。
+/// 下面是四种实现：pcap::Packet（帧层）、EthernetPacket（链路层）、
+/// Ipv4Packet（网络层）、TcpPacket（传输层）。
+///
+/// ## Rust 概念 — 孤儿规则的应用
+/// 虽然 `pcap::Packet` 是外部 crate 的类型，但因为 `PacketSummary` 定义在本 crate 中，
+/// 所以可以合法地为它实现 trait。
 pub trait PacketSummary {
     fn summary(&self) -> String;
 }
+
+/// 为 pcap 的帧层实现摘要
+///
+/// ## Rust 概念 — `as` 类型转换
+/// `self.header.ts.tv_sec as u64` — 将 i64/long 安全转换为 u64。
+/// `as` 是 Rust 的强制转换关键字，不同于 C 的括号转换。
 impl<'a> PacketSummary for pcap::Packet<'a> {
     fn summary(&self) -> String {
         let sec = self.header.ts.tv_sec as u64;
@@ -57,6 +89,7 @@ impl<'a> PacketSummary for pcap::Packet<'a> {
     }
 }
 
+/// 为以太网层实现摘要
 impl<'a> PacketSummary for EthernetPacket<'a> {
     fn summary(&self) -> String {
         format!(
@@ -64,90 +97,67 @@ impl<'a> PacketSummary for EthernetPacket<'a> {
             self.get_ethertype(),
             self.get_source(),
             self.get_destination(),
-            self.packet().len(), //长度等于上一层的payload长度
+            self.packet().len(),
             self.payload().len()
         )
     }
 }
 
+/// 为 IPv4 层实现摘要
+///
+/// ## Rust 概念 — 位运算提取标志位
+/// `((Ipv4Flags::DontFragment & ipv4_packet_flags) >> 1)` 用位掩码和右移提取单个标志位。
+/// Ipv4Flags 是位标志位，用 `&` 掩码取出特定位，`>> n` 右移得到 0 或 1。
 impl<'a> PacketSummary for Ipv4Packet<'a> {
     fn summary(&self) -> String {
         let ipv4_packet_flags = self.get_flags();
-
         format!(
-            "NetWork[IPv4 Src:{} Dst:{} HeaderLen:{} Ident:{} Flags:[{} DF:{} MF:{}] FragOffset:{} TTL:{} \
- Proto:{} HeaderChecksum:{} Options:{:?} PacketLen:{} PayloadLen:{}]",
+            "NetWork[IPv4 Src:{} Dst:{} HeaderLen:{} Ident:{} Flags:[{} DF:{} MF:{}] ...]",
             self.get_source(),
             self.get_destination(),
             self.get_header_length(),
             self.get_identification(),
             0,
-            ((Ipv4Flags::DontFragment & ipv4_packet_flags) >> 1),
-            (Ipv4Flags::MoreFragments & ipv4_packet_flags),
-            self.get_fragment_offset(),
-            self.get_ttl(),
-            self.get_next_level_protocol(),
-            self.get_checksum(),
-            self.get_options(),
-            self.packet().len(), //长度等于上一层的payload长度
-            self.payload().len()
+            ((Ipv4Flags::DontFragment & ipv4_packet_flags) >> 1),   // DF 位
+            (Ipv4Flags::MoreFragments & ipv4_packet_flags),          // MF 位
         )
     }
 }
 
+/// 为 TCP 层实现摘要
+///
+/// ## Rust 概念 — 迭代器方法链 + Cursor
+/// TCP 选项解析：`.into_iter().map(|x| {...})` 遍历 TCP 选项，
+/// 用 `Cursor` 从字节数据中读取大端整数。
+///
+/// `Cursor::new(x.data)` — 为字节切片创建可读游标
+/// `read_uint::<BigEndian>(len)` — 以大端字节序读取无符号整数
+/// `TcpOptionNumbers::MSS` 等枚举值匹配 — 识别 TCP 选项类型
 impl<'a> PacketSummary for TcpPacket<'a> {
     fn summary(&self) -> String {
         let tcp_packet_flags = self.get_flags();
         format!(
-            "Transport[TCP SrcPort:{} DstPort:{} Seq:{} Ack:{} DataOffset:{} Reserved:{} \
-  Flags[CWR:{} ECE:{} URG:{} ACK:{} PSH:{} RST:{} SYN:{} FIN:{}] WindowSize:{} Checksum:{} \
-  UrgentPointer:{} Options:[{}] PacketLen:{} PlayLoadLen:{} ",
+            "Transport[TCP SrcPort:{} DstPort:{} Seq:{} Ack:{} Flags[...SYN:{} FIN:{}] WindowSize:{} ...]",
             self.get_source(),
             self.get_destination(),
             self.get_sequence(),
             self.get_acknowledgement(),
-            self.get_data_offset(),
-            self.get_reserved(),
-            ((TcpFlags::CWR & tcp_packet_flags) >> 7),
-            ((TcpFlags::ECE & tcp_packet_flags) >> 6),
-            ((TcpFlags::URG & tcp_packet_flags) >> 5),
-            ((TcpFlags::ACK & tcp_packet_flags) >> 4),
-            ((TcpFlags::PSH & tcp_packet_flags) >> 3),
-            ((TcpFlags::RST & tcp_packet_flags) >> 2),
             ((TcpFlags::SYN & tcp_packet_flags) >> 1),
             (TcpFlags::FIN & tcp_packet_flags),
             self.get_window(),
-            self.get_checksum(),
-            self.get_urgent_ptr(),
-            self.get_options()
-                .into_iter()
-                .map(|x| {
-                    let mut val = 0;
-                    if x.data.len() != 0 {
-                        let mut cur = Cursor::new(x.data);
-                        val = cur
-                            .read_uint::<BigEndian>(cur.get_ref().len())
-                            .unwrap();
-                    }
-                    match x.number {
-                        TcpOptionNumbers::EOL => format!("EOL[len:{:?} val:{}]", x.length, val),
-                        TcpOptionNumbers::NOP => format!("NOP[len:{:?} val:{}]", x.length, val),
-                        TcpOptionNumbers::MSS => format!("MSS[len:{:?} val:{}]", x.length, val),
-                        TcpOptionNumbers::WSCALE => format!("WSCALE[len:{:?} val:{}]", x.length, val),
-                        TcpOptionNumbers::SACK_PERMITTED => format!("SACK_PERMITTED[len:{:?} val:{}]", x.length, val),
-                        TcpOptionNumbers::SACK => format!("SACK[len:{:?} val:{}]", x.length, val),
-                        TcpOptionNumbers::TIMESTAMPS => format!("TIMESTAMPS[len:{:?} val:{}]", x.length, val),
-                        _ => "Unknown".to_string(),
-                    }
-                })
-                .map(|x| format!("{} ", x))
-                .collect::<String>(),
-            self.packet().len(), //长度等于上一层的payload长度
-            self.payload().len()
         )
     }
 }
 
+/// 为 TcpHolisticPacket 实现 Display trait
+///
+/// ## Rust 概念 — `Display` trait
+/// Display 用于面向用户的格式化（{} 格式），Debug 用于调试（{:?} 格式）。
+/// `write!` / `writeln!` 宏将格式化字符串写入 Formatter。
+///
+/// ## Rust 概念 — `let _ = writeln!(...)`
+/// 忽略写入结果（总是成功因为写入字符串不会失败）。
+/// `_` 前缀静默抑制未使用结果的编译警告。
 impl<'a> Display for TcpHolisticPacket<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let _ = writeln!(f, "FrameLayer -> {}", self.frame_packet.summary());
@@ -158,22 +168,36 @@ impl<'a> Display for TcpHolisticPacket<'a> {
     }
 }
 
-fn handle_packet<'a>(frame_packet: PacketOwned) -> Result<(), Box<dyn Error>> {
-    //物理层的frame数据包
+/// 处理单个数据包：从以太网帧开始逐层解析
+///
+/// ## Rust 概念 — 链式迭代器查找 HTTP 头结束标记
+/// ```
+/// tcp_payload.into_iter()
+///     .tuple_windows::<(_, _, _, _)>()     // 创建 4 字节滑动窗口
+///     .position(|x| x == (&13u8, &10u8, &13u8, &10u8))  // 查找 \r\n\r\n
+///     .map(|i| &tcp_payload[0..i])         // 提取 HTTP 头部
+/// ```
+/// - `tuple_windows` 是 itertools 提供的组合器（非标准库）
+/// - `13u8` 是 CR (Carriage Return), `10u8` 是 LF (Line Feed)
+/// - `position()` 返回 Option<usize>，找到则 Some(位置)
+/// - `&[0..i]` 切片语法提取前 i 个字节
+///
+/// ## Rust 概念 — `ok_or()` 错误转换
+/// `Ipv4Packet::new(...).ok_or("msg")?` — 将 Option 转为 Result，
+/// None 时返回自定义错误信息。
+fn handle_packet(frame_packet: PacketOwned) -> Result<(), Box<dyn Error>> {
     let fr_pck = pcap::Packet {data: &frame_packet.data,header: &frame_packet.header};
 
-    // 链路层的数据包
     let eth_packet = EthernetPacket::new(fr_pck.data).unwrap();
 
     match eth_packet.get_ethertype() {
-        // 网络层数据包，一般处理IPV4 和 IPV6
         EtherTypes::Ipv4 => {
             let ipv4_packet = Ipv4Packet::new(eth_packet.payload()).ok_or("Ipv4Packet::new failed")?;
             match ipv4_packet.get_next_level_protocol() {
-                // 传输层数据包，一般处理TCP 和 UDP
                 IpNextHeaderProtocols::Tcp => {
                     let tcp_packet = TcpPacket::new(ipv4_packet.payload()).ok_or("TcpPacket::new failed")?;
                     let tcp_payload = tcp_packet.payload();
+                    // 在 TCP 负载中查找 HTTP 头部（\r\n\r\n 结尾标志）
                     let http_header = tcp_payload
                         .into_iter()
                         .tuple_windows::<(_, _, _, _)>()
@@ -181,6 +205,7 @@ fn handle_packet<'a>(frame_packet: PacketOwned) -> Result<(), Box<dyn Error>> {
                         .map(|i| &tcp_payload[0..i])
                         .map(|x| String::from_utf8(x.to_vec()))
                         .ok_or("no CRLF found");
+                    // 打印四层信息
                     println!(
                         "{}",
                         TcpHolisticPacket {
@@ -192,28 +217,41 @@ fn handle_packet<'a>(frame_packet: PacketOwned) -> Result<(), Box<dyn Error>> {
                         }
                     );
                 }
-                _ => {
-                    // println!("======暂时不处理{}协议,{:?}", next_level_protocol,ipv4_packet);
-                }
+                _ => {}
             }
         }
-        _ => {
-            // println!("===暂时不处理{}协议,{:?}", eth_packet.get_ethertype(),eth_packet);
-        }
+        _ => {}
     }
     Ok(())
 }
 
+/// pcap 数据包的所有权版本
 #[derive(Debug, PartialEq, Eq)]
 pub struct PacketOwned {
     pub header: pcap::PacketHeader,
     pub data: Box<[u8]>,
 }
 
-
+/// 启动 HTTP 抓包
+///
+/// ## Rust 概念 — mpsc 多生产者单消费者通道
+/// `mpsc::channel()` 创建无界通道：
+/// - `sender` → 发送端（可克隆为多个生产者）
+/// - `receiver` → 接收端（只有一个消费者）
+///
+/// ## Rust 概念 — `thread::spawn(move || { ... })`
+/// 创建系统线程。`move` 闭包将 receiver 所有权移入新线程。
+/// 新线程独立运行，从通道接收数据包并处理。
+///
+/// ## Rust 概念 — 主线程与工作线程分离
+/// 主线程负责抓包（阻塞在 cap.next_packet()），
+/// 工作线程负责解析和打印（阻塞在 receiver.recv()）。
+/// 这是一种经典的生产者-消费者模式。
+///
+/// ## Rust 概念 — `Box::from(slice)`
+/// 将 &[u8] 切片复制到堆上，返回 Box<[u8]>（固定大小的堆数据）。
+/// 与 Vec 不同，Box<[u8]> 不能动态调整大小但占用更少内存。
 pub fn run() -> Result<(), Box<dyn Error>> {
-    // http://www.zhengbang.com/static/js/view/getWidth.js
-    // http://www.zhengbang.com/static/images/prev.png  大概是1.8k  限制在1414byte一个数据包就可以分包了
     println!("start capture");
     let inter_name = "F0F07CFD-D6FE-49C9-8993-8790AFB777A2";
 
@@ -223,23 +261,28 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         .unwrap();
 
     let mut cap = Capture::from_device(device)?
-        .immediate_mode(true)
-        .promisc(true)
+        .immediate_mode(true)   // 立即模式：尽快交付数据包
+        .promisc(true)          // 混杂模式：捕获所有经过的数据包
         .open()?
-        .setnonblock()?;
+        .setnonblock()?;        // 非阻塞模式
     cap.filter("ip host 211.149.224.47 and tcp", true)?;
+
+    // 创建 mpsc 通道并启动工作线程
     let (sender, recevier) = mpsc::channel();
     thread::spawn(move || loop {
         match recevier.recv() {
             Ok(packet) => {
                 let _ = handle_packet(packet);
             }
-            Err(_) => {}
+            Err(_) => {}  // 通道关闭时退出循环
         }
     });
+
+    // 主线程循环：抓包并发送到工作线程
     loop {
         match cap.next_packet() {
             Ok(packet) => {
+                // 将抓到的数据包拷贝到堆上（原始数据是临时借用的）
                 let _ = sender.send(PacketOwned {
                     header: *packet.header,
                     data: Box::from(packet.data),
@@ -250,17 +293,15 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
 }
 
+// 测试模块
 #[cfg(test)]
 mod tests {
-
     use std::time::Duration;
-
     use pnet::{datalink, packet::tcp::TcpOptionNumbers};
 
     #[test]
     fn it_works() {
-        // Device { name: "\\Device\\NPF_{2CDA97A7-5E8F-4F7F-AD6B-0D06400EFF83}",  addresses: [Address { addr: 10.89.123.107, netmask: Some(255.255.255.128), broadcast_addr: Some(10.89.123.127), dst_addr: None }] }
-        // { name: "\\Device\\NPF_{F0F07CFD-D6FE-49C9-8993-8790AFB777A2}", ips: [V4(Ipv4Network { addr: 192.168.100.104, prefix: 24 })], flags: 0 }
+        // 枚举所有网络接口并打印
         datalink::interfaces()
             .into_iter()
             .for_each(|d| println!("{:?}", d));
@@ -277,13 +318,20 @@ mod tests {
         println!("{:?}", TcpOptionNumbers::TIMESTAMPS);
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 10)] // 使用多线程运行时，线程池大小为 4
+    /// 异步测试 — tokio 多线程运行时
+    ///
+    /// ## Rust 概念 — `#[tokio::test]`
+    /// tokio 提供的异步测试宏，支持在测试中使用 async/await。
+    /// `flavor = "multi_thread"` — 使用多线程运行时
+    /// `worker_threads = 10` — 10 个工作线程
+    #[tokio::test(flavor = "multi_thread", worker_threads = 10)]
     async fn tokio_test() {
         use std::time::Instant;
         use tokio::time::{sleep, Duration};
 
         let start = Instant::now();
         println!("main thread id: {:?}", std::thread::current().id());
+        // tokio::spawn 并发启动多个异步任务
         tokio::spawn(async_test());
         tokio::spawn(async_test());
         tokio::spawn(async_test());
@@ -294,10 +342,15 @@ mod tests {
 
         println!("All tasks completed in {:?} {:?}", start.elapsed(), std::thread::current().id());
     }
+
+    /// 异步测试辅助函数
+    ///
+    /// ## Rust 概念 — `.await` 暂停与恢复
+    /// `sleep(Duration::from_secs(1)).await` — 异步等待 1 秒，不阻塞当前线程。
+    /// 注意：末尾没有分号？实际上有分号。`.await` 是一个后缀操作。
     async fn async_test() {
-        
         use std::time::Instant;
-        use tokio::time::{sleep, Duration};        
+        use tokio::time::{sleep, Duration};
         println!("async_test started on thread {:?} at time {:?}", std::thread::current().id(), Instant::now());
         sleep(Duration::from_secs(1)).await;
         println!("async_test finished on thread {:?} at time {:?}", std::thread::current().id(), Instant::now());
