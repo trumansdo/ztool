@@ -4,7 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-iced.workspace = true
+iced = { workspace = true, features = ["advanced"] }
+bytemuck.workspace = true
+glam.workspace = true
 iced_aw.workspace = true
 native-theme-iced.workspace = true
 iced_aksel.workspace = true
