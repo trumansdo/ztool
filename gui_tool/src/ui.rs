@@ -65,8 +65,8 @@ pub mod widgets;
 // 这样外部可以直接 `use crate::ui::App` 而非 `use crate::ui::app::App`
 pub use app::App;
 
-use iced::{Element, Task};
 use anyhow::Result;
+use iced::{Element, Subscription, Task};
 
 /// 标签页枚举 —— 定义应用中的所有功能页面
 ///
@@ -95,6 +95,8 @@ pub enum Tab {
     NetCapture,
     /// UI 组件库展示，测试 iced_aw 各种组件
     UiLibs,
+    /// 金字塔3D 模型展示
+    Pyramid3d,
 }
 
 // `impl From<Tab> for String`: 实现类型转换 —— 从 Tab 转为 String
@@ -113,6 +115,7 @@ impl From<Tab> for String {
             Tab::NetPortScan => "net_port_scan".to_string(),
             Tab::NetCapture => "net_capture".to_string(),
             Tab::UiLibs => "ui_libs".to_string(),
+            Tab::Pyramid3d => "pyramid_3d".to_string(),
         }
     }
 }
@@ -135,6 +138,7 @@ impl Tab {
             "net_port_scan" => Some(Tab::NetPortScan),
             "net_capture" => Some(Tab::NetCapture),
             "ui_libs" => Some(Tab::UiLibs),
+            "pyramid_3d" => Some(Tab::Pyramid3d),
             _ => None,
         }
     }
@@ -173,6 +177,7 @@ pub enum Message {
     NetCapture(crate::features::net_capture::Msg),
     /// UI 组件库消息（切换子标签页、组件交互等）
     UiLibs(crate::features::ui_libs::Msg),
+    Pyramid3d(crate::features::pyramid_3d::Msg),
 }
 
 /// 创建初始应用状态
@@ -238,6 +243,10 @@ fn theme(_state: &App) -> iced::Theme {
     App::theme()
 }
 
+fn subscription(_state: &App) -> Subscription<Message> {
+    App::subscription(_state)
+}
+
 /// 启动 iced 桌面应用
 ///
 /// # iced application builder 模式
@@ -271,6 +280,7 @@ pub fn run() -> Result<()> {
             // `..default()` 将其他字段（如 position, decorations 等）设置为 iced 默认值
             ..iced::window::Settings::default()
         })
+        .subscription(subscription)
         .run()?;
     Ok(())
 }

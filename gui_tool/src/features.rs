@@ -28,3 +28,4 @@ pub mod net_capture;
 pub mod net_port_scan;
 pub mod theme;
 pub mod ui_libs;
+pub mod pyramid_3d;

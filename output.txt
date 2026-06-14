@@ -1,0 +1,37 @@
+[main] 程序启动，调用 iced::application(...)
+[TriangleApp::default] Default trait 调用，委托给 new()
+[TriangleApp::new] 创建 TriangleApp 实例
+[TriangleApp::subscription] 设置帧订阅
+[TriangleApp::view] 构建视图
+[Scene::draw] Shader draw 回调 - rotation:0
+[Pipeline::new] 开始初始化管线 - format:Bgra8Unorm
+[Pipeline::new] 创建顶点缓冲区
+[Pipeline::new] 创建 Uniform 缓冲区
+[Pipeline::new] 写入初始 Uniform 数据
+[Pipeline::new] 创建 BindGroupLayout
+[Pipeline::new] 创建 BindGroup
+[Pipeline::new] 创建 PipelineLayout
+[Pipeline::new] 创建 ShaderModule
+[Pipeline::new] 创建 RenderPipeline
+
+[Primitive::prepare] 准备渲染数据 - rotation:0
+[Primitive::render] 执行渲染
+[TriangleApp::update] Tick 消息 - 时间:Instant { t: 11897.5977845s }
+[TriangleApp::subscription] 设置帧订阅
+[TriangleApp::view] 构建视图
+[Scene::draw] Shader draw 回调 - rotation:0.6106437
+
+[Primitive::prepare] 准备渲染数据 - rotation:0.6106437
+[Primitive::render] 执行渲染
+[TriangleApp::update] Tick 消息 - 时间:Instant { t: 11897.6133713s }
+[TriangleApp::subscription] 设置帧订阅
+[TriangleApp::view] 构建视图
+[Scene::draw] Shader draw 回调 - rotation:0.62623054
+
+[Primitive::prepare] 准备渲染数据 - rotation:0.62623054
+[Primitive::render] 执行渲染
+[TriangleApp::update] Tick 消息 - 时间:Instant { t: 11897.6167126s }
+[TriangleApp::subscription] 设置帧订阅
+[TriangleApp::view] 构建视图
+[Scene::draw] Shader draw 回调 - rotation:0.6295718
+

@@ -12,6 +12,7 @@ use iced::{mouse, Element, Fill, Rectangle, Subscription};
 use iced::time::Instant;
 
 fn main() -> iced::Result {
+    eprintln!("[main] 程序启动，调用 iced::application(...)");
     iced::application(TriangleApp::default, TriangleApp::update, TriangleApp::view)
         .subscription(TriangleApp::subscription)
         .run()
@@ -35,6 +36,7 @@ enum Message {
 
 impl TriangleApp {
     fn new() -> Self {
+        eprintln!("[TriangleApp::new] 创建 TriangleApp 实例");
         Self {
             start: Instant::now(),
             scene: Scene { rotation: 0.0 },
@@ -44,15 +46,18 @@ impl TriangleApp {
     fn update(&mut self, message: Message) {
         match message {
             Message::Tick(time) => {
+                eprintln!("[TriangleApp::update] Tick 消息 - 时间:{:?}", time);
                 self.scene.rotation = (time - self.start).as_secs_f32();
             }
             Message::RotationChanged(angle) => {
+                eprintln!("[TriangleApp::update] RotationChanged 消息 - 角度:{}", angle);
                 self.scene.rotation = angle;
             }
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
+        eprintln!("[TriangleApp::view] 构建视图");
         let shader_widget = shader(&self.scene).width(Fill).height(Fill);
 
         let controls = column![
@@ -78,12 +83,14 @@ impl TriangleApp {
     }
 
     fn subscription(&self) -> Subscription<Message> {
+        eprintln!("[TriangleApp::subscription] 设置帧订阅");
         iced::window::frames().map(Message::Tick)
     }
 }
 
 impl Default for TriangleApp {
     fn default() -> Self {
+        eprintln!("[TriangleApp::default] Default trait 调用，委托给 new()");
         Self::new()
     }
 }
@@ -100,6 +107,7 @@ impl<Message> shader::Program<Message> for Scene {
         _cursor: mouse::Cursor,
         _bounds: Rectangle,
     ) -> Self::Primitive {
+        eprintln!("[Scene::draw] Shader draw 回调 - rotation:{}", self.rotation);
         Primitive {
             rotation: self.rotation,
         }
@@ -124,6 +132,7 @@ impl shader::Primitive for Primitive {
         _bounds: &Rectangle,
         _viewport: &shader::Viewport,
     ) {
+        eprintln!("[Primitive::prepare] 准备渲染数据 - rotation:{}", self.rotation);
         let rotation_matrix = glam::Mat4::from_rotation_z(self.rotation);
         let uniforms = Uniforms {
             rotation: rotation_matrix,
@@ -138,6 +147,7 @@ impl shader::Primitive for Primitive {
         target: &wgpu::TextureView,
         clip_bounds: &Rectangle<u32>,
     ) {
+        eprintln!("[Primitive::render] 执行渲染");
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("triangle render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -230,6 +240,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
 impl shader::Pipeline for Pipeline {
     fn new(device: &wgpu::Device, queue: &wgpu::Queue, format: wgpu::TextureFormat) -> Self {
+        eprintln!("[Pipeline::new] 开始初始化管线 - format:{:?}", format);
         let vertices = [
             Vertex {
                 position: [0.0, 0.6],
@@ -245,12 +256,14 @@ impl shader::Pipeline for Pipeline {
             },
         ];
 
+        eprintln!("[Pipeline::new] 创建顶点缓冲区");
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("triangle vertex buffer"),
             contents: bytemuck::cast_slice(&vertices),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
+        eprintln!("[Pipeline::new] 创建 Uniform 缓冲区");
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("triangle uniform buffer"),
             size: std::mem::size_of::<Uniforms>() as u64,
@@ -262,7 +275,9 @@ impl shader::Pipeline for Pipeline {
             rotation: glam::Mat4::IDENTITY,
         };
         queue.write_buffer(&uniform_buffer, 0, bytemuck::bytes_of(&initial_uniform));
+        eprintln!("[Pipeline::new] 写入初始 Uniform 数据");
 
+        eprintln!("[Pipeline::new] 创建 BindGroupLayout");
         let bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("triangle bind group layout"),
@@ -286,17 +301,20 @@ impl shader::Pipeline for Pipeline {
                 resource: uniform_buffer.as_entire_binding(),
             }],
         });
+        eprintln!("[Pipeline::new] 创建 BindGroup");
 
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("triangle pipeline layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
+        eprintln!("[Pipeline::new] 创建 PipelineLayout");
 
         let shader_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("triangle shader"),
             source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(TRIANGLE_SHADER)),
         });
+        eprintln!("[Pipeline::new] 创建 ShaderModule");
 
         let vertex_attributes = wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x3];
 
@@ -331,6 +349,7 @@ impl shader::Pipeline for Pipeline {
             multiview: None,
             cache: None,
         });
+        eprintln!("[Pipeline::new] 创建 RenderPipeline");
 
         Self {
             render_pipeline,

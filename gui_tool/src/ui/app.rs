@@ -34,11 +34,12 @@
 use crate::features::json_fmt::JsonFormatter;
 use crate::features::net_capture::PacketCapture;
 use crate::features::net_port_scan::NetScanner;
+use crate::features::pyramid_3d::{Msg, PyramidScene};
 use crate::features::ui_libs::UiLibs;
 use crate::ui::widgets::tree_menu::{TreeItem, render_tree_item};
 use crate::ui::widgets::{Layered, layer};
-use iced::widget::{container, column, row};
-use iced::{Element, Task, Length, Color};
+use iced::widget::{column, container, row};
+use iced::{Color, Element, Length, Subscription, Task, window};
 
 use super::{Message, Tab};
 
@@ -59,6 +60,8 @@ pub struct App {
     pub packet_capture: PacketCapture,
     /// UI 组件库的状态
     pub ui_libs: UiLibs,
+    /// 金字塔场景
+    pub pyramid_scene: PyramidScene,
     /// 侧边栏中已展开的分类 id 集合
     pub expanded: std::collections::HashSet<String>,
 }
@@ -117,20 +120,17 @@ impl App {
             // `m` 绑定匹配到的 json_fmt::Msg
             Message::JsonFmt(m) => {
                 // 调用子模块 update，用 .map() 包装返回的 Task
-                crate::features::json_fmt::update(&mut self.json_formatter, m)
-                    .map(Message::JsonFmt)
+                crate::features::json_fmt::update(&mut self.json_formatter, m).map(Message::JsonFmt)
             }
             Message::NetPortScan(m) => {
-                crate::features::net_port_scan::update(&mut self.net_port_scan, m)
-                    .map(Message::NetPortScan)
+                crate::features::net_port_scan::update(&mut self.net_port_scan, m).map(Message::NetPortScan)
             }
             Message::NetCapture(m) => {
-                crate::features::net_capture::update(&mut self.packet_capture, m)
-                    .map(Message::NetCapture)
+                crate::features::net_capture::update(&mut self.packet_capture, m).map(Message::NetCapture)
             }
-            Message::UiLibs(m) => {
-                crate::features::ui_libs::update(&mut self.ui_libs, m)
-                    .map(Message::UiLibs)
+            Message::UiLibs(m) => crate::features::ui_libs::update(&mut self.ui_libs, m).map(Message::UiLibs),
+            Message::Pyramid3d(m) => {
+                crate::features::pyramid_3d::update(&mut self.pyramid_scene, m).map(Message::Pyramid3d)
             }
             // `_ =>` 通配符匹配所有剩余变体（ToggleMenu 等暂未使用的变体）
             _ => Task::none(),
@@ -172,10 +172,9 @@ impl App {
             TreeItem::new("net", "网络工具")
                 .child(TreeItem::new("net_port_scan", "端口扫描"))
                 .child(TreeItem::new("net_capture", "网络抓包")),
-            TreeItem::new("data", "数据工具")
-                .child(TreeItem::new("json_fmt", "JSON格式化")),
-            TreeItem::new("ui", "组件库")
-                .child(TreeItem::new("ui_libs", "组件示例")),
+            TreeItem::new("data", "数据工具").child(TreeItem::new("json_fmt", "JSON格式化")),
+            TreeItem::new("ui", "组件库").child(TreeItem::new("ui_libs", "组件示例")),
+            TreeItem::new("3d", "3D展示").child(TreeItem::new("pyramid_3d", "金字塔3D")),
         ];
 
         // 当前选中的 tab id，用于菜单高亮
@@ -184,6 +183,7 @@ impl App {
             Tab::NetPortScan => "net_port_scan",
             Tab::NetCapture => "net_capture",
             Tab::UiLibs => "ui_libs",
+            Tab::Pyramid3d => "pyramid_3d",
         };
 
         // 递归渲染菜单树
@@ -219,19 +219,48 @@ impl App {
         let (content, overlays): (Element<'_, Message>, Vec<Layered<'_, Message>>) = match self.selected_tab {
             Tab::JsonFmt => {
                 let (c, o) = crate::features::json_fmt::view(&self.json_formatter);
-                (c.map(Message::JsonFmt), o.into_iter().map(|e| e.map(Message::JsonFmt)).collect())
+                (
+                    c.map(Message::JsonFmt),
+                    o.into_iter()
+                        .map(|e| e.map(Message::JsonFmt))
+                        .collect(),
+                )
             }
             Tab::NetPortScan => {
                 let (c, o) = crate::features::net_port_scan::view(&self.net_port_scan);
-                (c.map(Message::NetPortScan), o.into_iter().map(|e| e.map(Message::NetPortScan)).collect())
+                (
+                    c.map(Message::NetPortScan),
+                    o.into_iter()
+                        .map(|e| e.map(Message::NetPortScan))
+                        .collect(),
+                )
             }
             Tab::NetCapture => {
                 let (c, o) = crate::features::net_capture::view(&self.packet_capture);
-                (c.map(Message::NetCapture), o.into_iter().map(|e| e.map(Message::NetCapture)).collect())
+                (
+                    c.map(Message::NetCapture),
+                    o.into_iter()
+                        .map(|e| e.map(Message::NetCapture))
+                        .collect(),
+                )
             }
             Tab::UiLibs => {
                 let (c, o) = crate::features::ui_libs::view(&self.ui_libs);
-                (c.map(Message::UiLibs), o.into_iter().map(|e| e.map(Message::UiLibs)).collect())
+                (
+                    c.map(Message::UiLibs),
+                    o.into_iter()
+                        .map(|e| e.map(Message::UiLibs))
+                        .collect(),
+                )
+            }
+            Tab::Pyramid3d => {
+                let (c, o) = crate::features::pyramid_3d::view(&self.pyramid_scene);
+                (
+                    c.map(Message::Pyramid3d),
+                    o.into_iter()
+                        .map(|e| e.map(Message::Pyramid3d))
+                        .collect(),
+                )
             }
         };
 
@@ -270,5 +299,11 @@ impl App {
     /// 返回 Theme::Dark 意味着所有 widget 默认使用暗色风格。
     pub fn theme() -> iced::Theme {
         iced::Theme::Dark
+    }
+
+    pub fn subscription(_state: &App) -> Subscription<Message> {
+        Subscription::batch(vec![
+            window::frames().map(|x| Message::Pyramid3d(crate::features::pyramid_3d::Msg::Tick(x))),
+        ])
     }
 }
