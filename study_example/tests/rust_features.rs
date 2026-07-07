@@ -71,6 +71,8 @@ mod precise_capturing;
 mod reserved_keywords;
 #[path = "rust_features/15_smart_pointers.rs"]
 mod smart_pointers;
+#[path = "rust_features/36_static_dispatch_tricks.rs"]
+mod static_dispatch_tricks;
 #[path = "rust_features/02_strings.rs"]
 mod strings;
 #[path = "rust_features/07_structs_enums.rs"]

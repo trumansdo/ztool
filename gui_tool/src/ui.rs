@@ -58,15 +58,16 @@
 // `pub mod` 声明：当前模块 `ui` 下的子模块
 // 编译器会查找 ui/app.rs, ui/menu.rs, ui/widgets.rs (或 ui/widgets/mod.rs)
 pub mod app;
-pub mod menu;
 pub mod widgets;
+
+use std::time::Instant;
 
 // re-export: 将 `App` 从 `app` 模块提升到 `ui` 模块的公共接口
 // 这样外部可以直接 `use crate::ui::App` 而非 `use crate::ui::app::App`
 pub use app::App;
 
 use anyhow::Result;
-use iced::{Element, Subscription, Task};
+use iced::{Element, Subscription, Task, window};
 
 /// 标签页枚举 —— 定义应用中的所有功能页面
 ///
@@ -95,7 +96,6 @@ pub enum Tab {
     NetCapture,
     /// UI 组件库展示，测试 iced_aw 各种组件
     UiLibs,
-    /// 金字塔3D 模型展示
     Pyramid3d,
 }
 
@@ -163,8 +163,6 @@ impl Tab {
 /// 携带一个 `json_fmt::Msg` 类型的值。
 #[derive(Debug, Clone)]
 pub enum Message {
-    /// 切换顶部菜单栏的下拉展开状态
-    ToggleMenu(Option<usize>),
     /// 切换侧边栏分类的展开/折叠
     ToggleCategory(String),
     /// 切换到指定标签页
@@ -177,7 +175,9 @@ pub enum Message {
     NetCapture(crate::features::net_capture::Msg),
     /// UI 组件库消息（切换子标签页、组件交互等）
     UiLibs(crate::features::ui_libs::Msg),
-    Pyramid3d(crate::features::pyramid_3d::Msg),
+    ShaderPyramid(crate::features::pyramid_3d::Msg),
+    /// 窗口帧更新事件
+    Tick(Instant),
 }
 
 /// 创建初始应用状态
@@ -224,6 +224,13 @@ fn view(state: &App) -> Element<'_, Message> {
     state.view()
 }
 
+fn subscription(state: &App) -> Subscription<Message> {
+    Subscription::batch(vec![
+        window::frames().map(Message::Tick),
+        window::frames().map(|t| Message::ShaderPyramid(crate::features::pyramid_3d::Msg::Tick(t))),
+    ])
+}
+
 /// 获取窗口标题
 ///
 /// # iced 的 title 函数
@@ -241,10 +248,6 @@ fn title(_state: &App) -> String {
 /// iced 内置 Light 和 Dark 主题。本项目使用 `iced::Theme::Dark`。
 fn theme(_state: &App) -> iced::Theme {
     App::theme()
-}
-
-fn subscription(_state: &App) -> Subscription<Message> {
-    App::subscription(_state)
 }
 
 /// 启动 iced 桌面应用

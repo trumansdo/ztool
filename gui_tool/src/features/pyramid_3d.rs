@@ -1,7 +1,6 @@
 pub mod update;
 pub mod view;
-pub mod scene;
+mod scene;
 
-pub use update::{update, Msg};
+pub use update::{Msg, Pyramid, update};
 pub use view::view;
-pub use scene::PyramidScene;

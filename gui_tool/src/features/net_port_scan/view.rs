@@ -21,22 +21,11 @@
 
 use crate::features::theme;
 use crate::features::net_port_scan::{ScanMode, Msg, NetScanner};
-use crate::ui::widgets::Layered;
 use iced::widget::{button, column, container, row, text, text_input, pick_list, scrollable};
 use iced::Element;
 use iced::Length;
 
-/// 渲染端口扫描界面
-///
-/// # Rust: `text_input` —— 单行文本输入
-/// `text_input(placeholder, &content).on_input(msg)` 创建输入框。
-/// `placeholder` 在输入为空时显示灰色提示文字。
-/// 宽度设为 `Length::Fill` 以填充可用空间（适应不同窗口大小）。
-///
-/// # Rust: `pick_list` —— 下拉选择器
-/// `pick_list(options, selected, on_selected)` 创建下拉列表。
-/// 第二个参数 `Some(scanner.scan_mode)` 是当前选中项（None 表示未选择）。
-pub fn view(scanner: &NetScanner) -> (Element<'_, Msg>, Vec<Layered<'_, Msg>>) {
+pub fn view(scanner: &NetScanner) -> Element<'_, Msg> {
     let input = text_input("目标IP/网段 (如: 192.168.1.1, 192.168.1.1-10, 192.168.1.0/24)", &scanner.target)
         .on_input(Msg::TargetChanged)
         .padding(theme::padding2(0.36, 1.0))
@@ -149,6 +138,5 @@ pub fn view(scanner: &NetScanner) -> (Element<'_, Msg>, Vec<Layered<'_, Msg>>) {
     .height(Length::Fill)
     .into();
 
-    // 端口扫描页面没有 Toast 叠加层
-    (content, vec![])
+    content
 }

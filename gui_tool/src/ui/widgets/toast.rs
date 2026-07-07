@@ -1,47 +1,24 @@
 //! Toast 消息通知组件
 //!
-//! 在屏幕上显示临时浮动通知，支持 4 种级别 × 9 个位置 = 36 种组合。
-//! 纯自定义实现，未使用 `iced_toaster` 库。
-//!
-//! # Rust 语法要点
-//!
-//! ## 枚举 (enum) 的进阶用法
-//! Rust 的枚举变体可以携带方法、实现 trait。
-//! 本文件中的 `ToastLevel`、`ToastPosition` 都是枚举，每个都有：
-//! - `#[derive(...)]` 自动生成 trait 实现
-//! - `impl ToastLevel { fn border_color(&self) -> Color { ... } }` 方法定义
-//!
-//! ## `match` 穷尽性强制
-//! `match` 必须覆盖所有可能的变体。如果新增了变体但忘记添加相应的 match 分支，
-//! 编译器会报错。这是 Rust 安全性的重要来源。
-//!
-//! ## 闭包 (Closure)
-//! `|_: &Theme, status: button::Status| { ... }` 是闭包语法：
-//! - `|参数| { 函数体 }` 是闭包的字面量语法
-//! - `_` 忽略第一个参数（因为不需要 theme 信息）
-//! - 闭包可以捕获外部变量（这里是 `border_color`）
-//!
-//! ## 泛型函数
-//! `fn view_toasts<'a, M>(toasts: &[ToastItem], on_dismiss: impl Fn(u64) -> M) -> Vec<...>`
-//! - `'a`: 生命周期参数
-//! - `M`: 消息类型参数
-//! - `&[ToastItem]`: 切片引用（类似 &Vec 但更通用）
-//! - `impl Fn(u64) -> M`: 接受任何实现了 Fn(u64) -> M 的类型（闭包或函数指针）
-//!
-//! ## `use super::...` —— 模块树引用
-//! `super` 引用父模块（`widgets`），`super::overlay` 即 `widgets::overlay`。
-//! 也可以写 `crate::ui::widgets::overlay`（绝对路径），但 `super` 更简洁且不依赖顶层结构。
+//! 在屏幕上显示临时浮动通知，支持 4 种级别 × 2 个位置（右下/右上）的组合。
+//! 基于 iced 原生 Widget + Overlay 实现，定时器融入 iced 更新循环，不依赖外部 tokio。
 
+use iced::advanced::layout::{self, Layout};
+use iced::advanced::overlay;
+use iced::advanced::renderer;
+use iced::advanced::widget::{self, Operation, Tree};
+use iced::advanced::{Clipboard, Shell, Widget};
+use iced::mouse;
+use iced::time::{self, Duration, Instant};
 use iced::widget::{button, container, row, text};
-use iced::{Alignment, Background, Border, Color, Element, Length, Theme};
+use iced::{
+    Alignment, Background, Border, Color, Element, Event, Length, Point, Rectangle, Renderer, Size,
+    Theme, Vector,
+};
+use iced::window;
 
-use super::overlay::{Anchor, Layered};
+pub const DEFAULT_TIMEOUT: u64 = 3;
 
-/// Toast 级别 —— 控制提示消息的颜色和语义
-///
-/// # Rust: `#[derive(PartialEq, Eq)]`
-/// `PartialEq` + `Eq` 允许用 `==` 比较两个 ToastLevel 是否相等。
-/// `#[default]` 标记默认变体（`Info`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToastLevel {
     #[default]
@@ -51,68 +28,9 @@ pub enum ToastLevel {
     Error,
 }
 
-/// Toast 显示位置 —— 9 宫格定位
-///
-/// 通过 `anchor()` 方法映射到具体的 Anchor 值。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ToastPosition {
-    TopLeft,
-    #[default]
-    TopCenter,
-    TopRight,
-    CenterLeft,
-    Center,
-    CenterRight,
-    BottomLeft,
-    BottomCenter,
-    BottomRight,
-}
-
-/// 为 ToastPosition 实现 `anchor()` 方法
-///
-/// 每个位置变体转换为对应的 `Anchor` 结构体，用于叠加层定位。
-impl ToastPosition {
-    pub fn anchor(self) -> Anchor {
-        match self {
-            // Anchor::top_left(top, left) 创建带顶部+左侧锚点
-            ToastPosition::TopLeft => Anchor::top_left(8.0, 8.0),
-            // Anchor { top: Some(8.0), ..default() } 只设 top，水平方向居中
-            ToastPosition::TopCenter => Anchor { top: Some(8.0), ..Anchor::default() },
-            ToastPosition::TopRight => Anchor::top_right(8.0, 8.0),
-            ToastPosition::CenterLeft => Anchor { left: Some(8.0), ..Anchor::default() },
-            ToastPosition::Center => Anchor::center(),
-            ToastPosition::CenterRight => Anchor { right: Some(8.0), ..Anchor::default() },
-            ToastPosition::BottomLeft => Anchor::bottom_left(8.0, 8.0),
-            ToastPosition::BottomCenter => Anchor { bottom: Some(8.0), ..Anchor::default() },
-            ToastPosition::BottomRight => Anchor::bottom_right(8.0, 8.0),
-        }
-    }
-}
-
-/// 单个 Toast 的完整信息
-///
-/// # Rust: `#[derive(Debug, Clone)]`
-/// - `Debug`: 打印调试信息 `println!("{:?}", toast)`
-/// - `Clone`: 生成深拷贝 `toast.clone()`
-/// 不能 derive Copy，因为包含 `String`（堆分配类型）
-#[derive(Debug, Clone)]
-pub struct ToastItem {
-    /// 唯一标识符，用于删除特定 toast
-    pub id: u64,
-    /// 消息级别（影响左边框颜色）
-    pub level: ToastLevel,
-    /// 显示的文本内容
-    pub text: String,
-    /// 在屏幕上的显示位置
-    pub position: ToastPosition,
-}
-
-/// 为 ToastLevel 添加获取边框颜色的方法
 impl ToastLevel {
-    /// 根据级别返回对应的边框颜色
     fn border_color(&self) -> Color {
         match self {
-            // Color::from_rgb(r, g, b) 接收 0.0~1.0 范围的浮点值
             ToastLevel::Info => Color::from_rgb(0.35, 0.55, 0.85),
             ToastLevel::Success => Color::from_rgb(0.25, 0.70, 0.35),
             ToastLevel::Warning => Color::from_rgb(0.80, 0.65, 0.15),
@@ -121,100 +39,466 @@ impl ToastLevel {
     }
 }
 
-/// 将 Toast 列表渲染为一组 Layered 叠加元素
-///
-/// # Rust: 泛型函数与生命周期
-/// ```text
-/// pub fn view_toasts<'a, M: Clone + 'a>(
-///     toasts: &'a [ToastItem],
-///     on_dismiss: impl Fn(u64) -> M + Clone + 'a,
-/// ) -> Vec<Layered<'a, M>>
-/// ```
-/// - `'a`: 生命周期参数，表示 toast 切片和 Layered 元素都存活 'a
-/// - `M: Clone + 'a`: M 必须实现 Clone（闭包需要克隆），且存活至少 'a
-/// - `impl Fn(u64) -> M + Clone + 'a`: 接受任何实现了 Fn 闭包 trait 且可克隆的类型
-///
-/// # Rust: 迭代器与 `map` + `collect`
-/// `toasts.iter().map(|toast| { ... }).collect()`:
-/// - `.iter()`: 创建不可变借用迭代器，产生 `&ToastItem`
-/// - `.map(|toast| { ... })`: 将每个 toast 转换为 Layered 元素
-/// - `.collect()`: 收集为 Vec<Layered>，编译器从函数返回类型推断目标集合
-pub fn view_toasts<'a, M: Clone + 'a>(
-    toasts: &'a [ToastItem],
-    on_dismiss: impl Fn(u64) -> M + Clone + 'a,
-) -> Vec<Layered<'a, M>> {
-    toasts
-        .iter()
-        .map(|toast| {
-            let border_color = toast.level.border_color();
-            let id = toast.id;
-            let on_dismiss = on_dismiss.clone();
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ToastPosition {
+    #[default]
+    BottomRight,
+    TopRight,
+}
 
-            // 关闭按钮 ×
-            //
-            // Rust: 闭包捕获
-            // `move` 关键字使闭包获取变量所有权（这里不需要）。
-            // `.style(|_: &Theme, status: button::Status| { ... })`
-            // 这个闭包在每次按钮需要重绘时被 iced 调用，
-            // 接收 theme 引用和按钮状态，返回 button::Style。
-            let close_btn: Element<'a, M> = button(text("×").size(9))
-                .on_press(on_dismiss(id))
-                .padding([0, 3])
-                .style(|_: &Theme, status: button::Status| {
-                    // match 表达式作为值返回
-                    let bg = match status {
-                        button::Status::Hovered => Color::from_rgb(0.3, 0.3, 0.35),
-                        button::Status::Pressed => Color::from_rgb(0.4, 0.4, 0.45),
-                        // Status::Active 等默认情况 → 透明
-                        _ => Color::TRANSPARENT,
-                    };
-                    button::Style {
-                        // `Some(Background::Color(bg))` —— Option 包装
-                        background: Some(Background::Color(bg)),
-                        border: Border {
-                            color: Color::TRANSPARENT,
-                            width: 0.0,
-                            // `.into()` 将 f32 3.0 转为 `Radius::from(3.0)`
-                            // Rust 的 From/Into trait 实现自动类型转换
-                            radius: 3.0.into(),
-                        },
-                        text_color: Color::from_rgb(0.55, 0.55, 0.6),
-                        // `..Default::default()` —— 其余字段用默认值
-                        ..Default::default()
-                    }
+#[derive(Debug, Clone)]
+pub struct Toast {
+    pub level: ToastLevel,
+    pub text: String,
+    pub position: ToastPosition,
+}
+
+impl Default for Toast {
+    fn default() -> Self {
+        Self {
+            level: ToastLevel::default(),
+            text: String::new(),
+            position: ToastPosition::default(),
+        }
+    }
+}
+
+pub struct Manager<'a, Message> {
+    content: Element<'a, Message>,
+    toasts: Vec<Element<'a, Message>>,
+    positions: Vec<ToastPosition>,
+    timeout_secs: u64,
+    on_close: Box<dyn Fn(usize) -> Message + 'a>,
+}
+
+impl<'a, Message> Manager<'a, Message>
+where
+    Message: 'a + Clone,
+{
+    pub fn new(
+        content: impl Into<Element<'a, Message>>,
+        toasts: &'a [Toast],
+        on_close: impl Fn(usize) -> Message + 'a,
+    ) -> Self {
+        let positions: Vec<ToastPosition> = toasts.iter().map(|t| t.position).collect();
+
+        let toasts = toasts
+            .iter()
+            .enumerate()
+            .map(|(index, toast)| {
+                let border_color = toast.level.border_color();
+
+                let close_btn: Element<'a, Message> = button(text("×").size(9))
+                    .on_press((on_close)(index))
+                    .padding([0, 3])
+                    .style(|_: &Theme, status: button::Status| {
+                        let bg = match status {
+                            button::Status::Hovered => Color::from_rgb(0.3, 0.3, 0.35),
+                            button::Status::Pressed => Color::from_rgb(0.4, 0.4, 0.45),
+                            _ => Color::TRANSPARENT,
+                        };
+                        button::Style {
+                            background: Some(Background::Color(bg)),
+                            border: Border {
+                                color: Color::TRANSPARENT,
+                                width: 0.0,
+                                radius: 3.0.into(),
+                            },
+                            text_color: Color::from_rgb(0.55, 0.55, 0.6),
+                            ..Default::default()
+                        }
+                    })
+                    .into();
+
+                container(
+                    row![
+                        text(toast.text.as_str()).size(12).width(Length::Fill),
+                        close_btn,
+                    ]
+                    .spacing(4)
+                    .align_y(Alignment::Center),
+                )
+                .padding([6, 8])
+                .width(Length::Fixed(220.0))
+                .style(move |_: &Theme| container::Style {
+                    background: Some(Background::Color(Color::from_rgb(0.14, 0.14, 0.18))),
+                    border: Border {
+                        color: border_color,
+                        width: 1.0,
+                        radius: 4.0.into(),
+                    },
+                    ..Default::default()
                 })
-                .into();
-
-            // Toast 主体：文本 + 关闭按钮
-            //
-            // `row![...]` 是 iced 的声明式布局宏，
-            // 展开为 `Row::with_children(vec![...])`。
-            let body = container(
-                row![
-                    // `text(&toast.text)` 借用 text 字段
-                    // `.width(Length::Fill)` 让文本占据剩余空间，把按钮推到右边
-                    text(&toast.text).size(12).width(Length::Fill),
-                    close_btn,
-                ]
-                .spacing(4)
-                .align_y(Alignment::Center),
-            )
-            .padding([6, 8])
-            .width(Length::Fixed(220.0))
-            .style(move |_: &Theme| container::Style {
-                // 深色背景 + 颜色边框（左侧）
-                background: Some(Background::Color(Color::from_rgb(0.14, 0.14, 0.18))),
-                border: Border {
-                    color: border_color,
-                    width: 1.0,
-                    radius: 4.0.into(),
-                },
-                ..Default::default()
+                .into()
             })
-            .into();
+            .collect();
 
-            // 创建 Layered 元素并设置锚点
-            Layered::new(body).anchor(toast.position.anchor())
-        })
-        .collect()
+        Self {
+            content: content.into(),
+            toasts,
+            positions,
+            timeout_secs: DEFAULT_TIMEOUT,
+            on_close: Box::new(on_close),
+        }
+    }
+
+    pub fn timeout(self, seconds: u64) -> Self {
+        Self {
+            timeout_secs: seconds,
+            ..self
+        }
+    }
+}
+
+impl<Message> Widget<Message, Theme, Renderer> for Manager<'_, Message>
+where
+    Message: Clone,
+{
+    fn size(&self) -> Size<Length> {
+        self.content.as_widget().size()
+    }
+
+    fn layout(
+        &mut self,
+        tree: &mut Tree,
+        renderer: &Renderer,
+        limits: &layout::Limits,
+    ) -> layout::Node {
+        self.content
+            .as_widget_mut()
+            .layout(&mut tree.children[0], renderer, limits)
+    }
+
+    fn tag(&self) -> widget::tree::Tag {
+        struct Marker;
+        widget::tree::Tag::of::<Marker>()
+    }
+
+    fn state(&self) -> widget::tree::State {
+        widget::tree::State::new(Vec::<Option<Instant>>::new())
+    }
+
+    fn children(&self) -> Vec<Tree> {
+        std::iter::once(Tree::new(&self.content))
+            .chain(self.toasts.iter().map(Tree::new))
+            .collect()
+    }
+
+    fn diff(&self, tree: &mut Tree) {
+        let instants = tree.state.downcast_mut::<Vec<Option<Instant>>>();
+        instants.retain(Option::is_some);
+
+        match (instants.len(), self.toasts.len()) {
+            (old, new) if old > new => {
+                instants.truncate(new);
+            }
+            (old, new) if old < new => {
+                instants.extend(std::iter::repeat_n(Some(Instant::now()), new - old));
+            }
+            _ => {}
+        }
+
+        tree.diff_children(
+            &std::iter::once(&self.content)
+                .chain(self.toasts.iter())
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        renderer: &Renderer,
+        operation: &mut dyn Operation,
+    ) {
+        operation.container(None, layout.bounds());
+        operation.traverse(&mut |operation| {
+            self.content.as_widget_mut().operate(
+                &mut tree.children[0],
+                layout,
+                renderer,
+                operation,
+            );
+        });
+    }
+
+    fn update(
+        &mut self,
+        tree: &mut Tree,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &Renderer,
+        _clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+        viewport: &Rectangle,
+    ) {
+        self.content.as_widget_mut().update(
+            &mut tree.children[0],
+            event,
+            layout,
+            cursor,
+            renderer,
+            _clipboard,
+            shell,
+            viewport,
+        );
+    }
+
+    fn draw(
+        &self,
+        tree: &Tree,
+        renderer: &mut Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+    ) {
+        self.content.as_widget().draw(
+            &tree.children[0],
+            renderer,
+            theme,
+            style,
+            layout,
+            cursor,
+            viewport,
+        );
+    }
+
+    fn mouse_interaction(
+        &self,
+        tree: &Tree,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        viewport: &Rectangle,
+        renderer: &Renderer,
+    ) -> mouse::Interaction {
+        self.content.as_widget().mouse_interaction(
+            &tree.children[0],
+            layout,
+            cursor,
+            viewport,
+            renderer,
+        )
+    }
+
+    fn overlay<'b>(
+        &'b mut self,
+        tree: &'b mut Tree,
+        layout: Layout<'b>,
+        renderer: &Renderer,
+        viewport: &Rectangle,
+        translation: Vector,
+    ) -> Option<overlay::Element<'b, Message, Theme, Renderer>> {
+        let instants = tree.state.downcast_mut::<Vec<Option<Instant>>>();
+
+        let (content_state, toasts_state) = tree.children.split_at_mut(1);
+
+        let content = self.content.as_widget_mut().overlay(
+            &mut content_state[0],
+            layout,
+            renderer,
+            viewport,
+            translation,
+        );
+
+        let toasts = (!self.toasts.is_empty()).then(|| {
+            overlay::Element::new(Box::new(Overlay {
+                position: layout.bounds().position() + translation,
+                viewport: *viewport,
+                toasts: &mut self.toasts,
+                positions: &self.positions,
+                trees: toasts_state,
+                instants,
+                on_close: &self.on_close,
+                timeout_secs: self.timeout_secs,
+            }))
+        });
+
+        let overlays = content.into_iter().chain(toasts).collect::<Vec<_>>();
+
+        (!overlays.is_empty()).then(|| overlay::Group::with_children(overlays).overlay())
+    }
+}
+
+struct Overlay<'a, 'b, Message> {
+    position: Point,
+    viewport: Rectangle,
+    toasts: &'b mut [Element<'a, Message>],
+    positions: &'b [ToastPosition],
+    trees: &'b mut [Tree],
+    instants: &'b mut [Option<Instant>],
+    on_close: &'b dyn Fn(usize) -> Message,
+    timeout_secs: u64,
+}
+
+impl<Message> overlay::Overlay<Message, Theme, Renderer> for Overlay<'_, '_, Message> {
+    fn layout(&mut self, renderer: &Renderer, bounds: Size) -> layout::Node {
+        let limits = layout::Limits::new(Size::ZERO, bounds);
+
+        let mut top_nodes = Vec::new();
+        let mut bottom_nodes = Vec::new();
+
+        for (i, toast) in self.toasts.iter_mut().enumerate() {
+            let node = toast.as_widget_mut().layout(&mut self.trees[i], renderer, &limits);
+            let size = node.bounds().size();
+
+            let x = self.viewport.x + self.viewport.width - size.width - 12.0;
+            let y_offset = match self.positions.get(i).copied().unwrap_or_default() {
+                ToastPosition::TopRight => {
+                    let prev_height: f32 = top_nodes.iter().map(|n: &layout::Node| n.bounds().height + 8.0).sum::<f32>();
+                    self.position.y + 8.0 + prev_height
+                }
+                ToastPosition::BottomRight => {
+                    let prev_height: f32 = bottom_nodes.iter().map(|n: &layout::Node| n.bounds().height + 8.0).sum::<f32>();
+                    self.position.y + bounds.height - size.height - 8.0 - prev_height
+                }
+            };
+
+            let positioned = node.move_to(Point::new(x, y_offset));
+            match self.positions.get(i).copied().unwrap_or_default() {
+                ToastPosition::TopRight => top_nodes.push(positioned),
+                ToastPosition::BottomRight => bottom_nodes.push(positioned),
+            }
+        }
+
+        let mut children = top_nodes;
+        children.extend(bottom_nodes);
+        layout::Node::with_children(bounds, children)
+    }
+
+    fn update(
+        &mut self,
+        event: &Event,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &Renderer,
+        _clipboard: &mut dyn Clipboard,
+        shell: &mut Shell<'_, Message>,
+    ) {
+        if let Event::Window(window::Event::RedrawRequested(now)) = &event {
+            self.instants
+                .iter_mut()
+                .enumerate()
+                .for_each(|(index, maybe_instant)| {
+                    if let Some(instant) = maybe_instant.as_mut() {
+                        let remaining =
+                            time::seconds(self.timeout_secs).saturating_sub(instant.elapsed());
+
+                        if remaining == Duration::ZERO {
+                            maybe_instant.take();
+                            shell.publish((self.on_close)(index));
+                        } else {
+                            shell.request_redraw_at(*now + remaining);
+                        }
+                    }
+                });
+        }
+
+        let viewport = layout.bounds();
+
+        for (((child, state), child_layout), instant) in self
+            .toasts
+            .iter_mut()
+            .zip(self.trees.iter_mut())
+            .zip(layout.children())
+            .zip(self.instants.iter_mut())
+        {
+            let mut local_messages = vec![];
+            let mut local_shell = Shell::new(&mut local_messages);
+            let mut local_clipboard = iced::advanced::clipboard::Null;
+
+            child.as_widget_mut().update(
+                state,
+                event,
+                child_layout,
+                cursor,
+                renderer,
+                &mut local_clipboard,
+                &mut local_shell,
+                &viewport,
+            );
+
+            if !local_shell.is_empty() {
+                instant.take();
+            }
+
+            shell.merge(local_shell, std::convert::identity);
+        }
+    }
+
+    fn draw(
+        &self,
+        renderer: &mut Renderer,
+        theme: &Theme,
+        style: &renderer::Style,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+    ) {
+        let viewport = layout.bounds();
+
+        for ((child, tree), layout) in self
+            .toasts
+            .iter()
+            .zip(self.trees.iter())
+            .zip(layout.children())
+        {
+            child
+                .as_widget()
+                .draw(tree, renderer, theme, style, layout, cursor, &viewport);
+        }
+    }
+
+    fn operate(
+        &mut self,
+        layout: Layout<'_>,
+        renderer: &Renderer,
+        operation: &mut dyn widget::Operation,
+    ) {
+        operation.container(None, layout.bounds());
+        operation.traverse(&mut |operation| {
+            self.toasts
+                .iter_mut()
+                .zip(self.trees.iter_mut())
+                .zip(layout.children())
+                .for_each(|((child, state), layout)| {
+                    child.as_widget_mut().operate(state, layout, renderer, operation);
+                });
+        });
+    }
+
+    fn mouse_interaction(
+        &self,
+        layout: Layout<'_>,
+        cursor: mouse::Cursor,
+        renderer: &Renderer,
+    ) -> mouse::Interaction {
+        self.toasts
+            .iter()
+            .zip(self.trees.iter())
+            .zip(layout.children())
+            .map(|((child, state), layout)| {
+                child
+                    .as_widget()
+                    .mouse_interaction(state, layout, cursor, &self.viewport, renderer)
+                    .max(if cursor.is_over(layout.bounds()) {
+                        mouse::Interaction::Idle
+                    } else {
+                        Default::default()
+                    })
+            })
+            .max()
+            .unwrap_or_default()
+    }
+}
+
+impl<'a, Message> From<Manager<'a, Message>> for Element<'a, Message>
+where
+    Message: 'a + Clone,
+{
+    fn from(manager: Manager<'a, Message>) -> Self {
+        Element::new(manager)
+    }
 }

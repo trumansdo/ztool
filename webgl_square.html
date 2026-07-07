@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>WebGL 旋转彩色正方形</title>
+<style>
+  body { margin: 0; background: #1a1a2e; display: flex; justify-content: center; align-items: center; height: 100vh; }
+  canvas { border: 2px solid #444; }
+</style>
+</head>
+<body>
+<canvas id="glcanvas" width="600" height="600"></canvas>
+
+<!-- ===== 顶点着色器（GLSL） ===== -->
+<script id="vertex-shader" type="x-shader/x-vertex">
+  // [着色器思维核心] 这个函数会被GPU自动调用，次数 = 顶点数量（本例4次）
+  // 程序员不需要写"for (i=0; i<4; i++)"，GPU的硬件调度器会并行处理所有顶点
+  //
+  // attribute: GPU自动从缓冲区取出数据填入 （由 js 端 gl.vertexAttribPointer 绑定）
+  // uniform:   程序员通过 js 端 gl.uniformXxx 手动传入 （所有顶点共享）
+  // varying:   顶点着色器输出 → 光栅化自动插值 → 片元着色器接收
+  attribute vec2 a_position;   // 顶点坐标（模型空间，只有xy）[GPU自动填入]
+  attribute vec4 a_color;      // 顶点颜色 [GPU自动填入]
+
+  // u_mvp = 投影矩阵 × 视图矩阵 × 模型矩阵（在 JS 中已乘好，三个合体传入）
+  // 也可以拆成三个 uniform 分别传，在着色器里乘：gl_Position = u_proj * u_view * u_model * vec4(a_position, 0.0, 1.0)
+  // 但一次传入可以减少 CPU→GPU 的数据量，GPU 端也少做两次乘法
+  uniform mat4 u_mvp;          // MVP合体矩阵 [程序员手动传入]
+
+  varying vec4 v_color;        // 传递给片元着色器的颜色 [程序员计算返回]
+
+  void main() {
+    // 坐标变换链：模型空间 → 世界空间 → 观察空间 → 裁剪空间 → 屏幕
+    // 这 4 步变换全部包在 u_mvp 一个矩阵里，一步到位：
+    //
+    //   模型矩阵：把建模时的坐标（如"一个边长1的正方形"）搬到世界场景中
+    //   视图矩阵：把整个世界搬到"摄像机眼前"，以摄像机为原点重新描述
+    //   投影矩阵：把摄像机看到的 3D 世界压扁成 2D，同时保留深度信息
+    //
+    // 为什么要分成三个矩阵？
+    //   因为每个矩阵负责完全不同的"世界观切换"，分开算互不干扰：
+    //   - 改物体位置 → 只改模型矩阵，摄像机和投影不用动
+    //   - 改摄像机位置 → 只改视图矩阵，物体和投影不用动
+    //   - 改视野/远近 → 只改投影矩阵，物体和摄像机不用动
+    //
+    // 一句话总结：每个空间就是让不同的事情分开计算，互不干扰
+    gl_Position = u_mvp * vec4(a_position, 0.0, 1.0);
+    v_color = a_color;                      // 颜色原样传给下一阶段
+  }
+</script>
+
+<!-- ===== 片元着色器（GLSL） ===== -->
+<script id="fragment-shader" type="x-shader/x-fragment">
+  // [着色器思维核心] 这个函数会被GPU自动调用，次数 = 光栅化后的像素数量（本例可能几万个像素）
+  // 光栅化自动完成的事情（程序员不需要手写）：
+  //   1. 把正方形拆成无数个像素
+  //   2. 根据像素到4个顶点的距离，自动插值varying变量v_color
+  precision mediump float;
+
+  // varying: 从顶点着色器传来，光栅化阶段已自动插值 [GPU自动填入]
+  varying vec4 v_color;
+
+  void main() {
+    // [数据流 6/6] 片元着色器：处理单个像素，决定最终颜色
+    // 执行次数 = N（每个像素一次，GPU并行）
+    gl_FragColor = v_color;  // 像素颜色 = 插值后的顶点颜色
+  }
+</script>
+
+<script>
+// ===========================================================================
+//  用 正 常 编 程 思 维 对 比 着 色 器 编 程 思 维
+// ===========================================================================
+//
+// 正常编程思维（CPU）：
+//   你给我一个数组 vertices = [顶点0, 顶点1, 顶点2, 顶点3]
+//   我写一段代码：
+//       for (let i = 0; i < vertices.length; i++) {
+//           处理(vertices[i]);
+//       }
+//   循环是"显式的"——我明确写 for 循环，我控制遍历顺序
+//
+// 着色器编程思维（GPU）：
+//   你把我写好的"单个顶点的处理规则"（vs_main函数）丢给GPU
+//   GPU说："好的，我不需要你写 for 循环
+//           我自己有几百个核心，我同时把4个顶点各交给一个核心
+//           每个核心独立执行你的 vs_main"
+//   并行是"隐式的"——我不写循环，GPU硬件调度器自动并行
+//
+//   类比：正常编程是"一个人逐个处理100封信"
+//        着色器编程是"雇100个人，每人处理1封信，同时干完"
+//        我要做的不是写"如何处理100封信的流程"
+//        而是写"处理1封信的规则"，然后GPU自动复制100份同时执行
+//
+//   【关键转变】
+//   正常编程：for循环是程序员写的，串行/并行由程序员控制
+//   着色器编程：for循环不存在，GPU硬件的SIMD调度器自动并行
+//   我的工作是：定义"单个元素的处理规则"，而不是"整个集合的遍历逻辑"
+
+(function() {
+  const canvas = document.getElementById('glcanvas');
+
+  // ======================== 初始化 WebGL 上下文 ========================
+  const gl = canvas.getContext('webgl');
+  if (!gl) { alert('浏览器不支持 WebGL'); return; }
+
+  // ======================== 编译着色器 ========================
+  function createShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(shader));
+      gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }
+
+  const vsSource = document.getElementById('vertex-shader').text;
+  const fsSource = document.getElementById('fragment-shader').text;
+  const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+
+  // ======================== 链接着色器到 GPU 管线程序 ========================
+  const program = gl.createProgram();
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(program));
+    return;
+  }
+
+  // ======================== [数据流 1/6] CPU主程序：准备正方形顶点数据（模型空间） ========================
+  //
+  // 【模型空间】—— 建模时随手定义的坐标，只管"这个物体长什么样"
+  // 这里正方形以原点为中心，边长1（-0.5 ~ +0.5），跟任何场景/摄像机都无关
+  //
+  // 正方形由 2 个三角形组成（WebGL 只认三角形），共 6 个顶点索引
+  // 但我们用 gl.TRIANGLE_FAN 模式，只需 4 个顶点，GPU 自动连成扇形
+  //
+  // 每个顶点有 6 个浮点数：x, y, r, g, b, a
+  //   xy   = 模型空间 2D 坐标（建模时随手定的）
+  //   rgba = 颜色值（0.0 ~ 1.0）
+  //
+  // [正常编程对比]
+  //   如果是 CPU 绘制：我会写
+  //     points = [(0,0,red), (1,0,green), (1,1,blue), (0,1,yellow)]
+  //     for p in points: draw(p.x, p.y, p.color)
+  //   但 WebGL 是：我把所有数据打平成一个大数组，一次性扔给 GPU
+  const vertices = new Float32Array([
+    //  x     y        r     g     b    a
+    -0.5, -0.5,    1.0, 0.0, 0.0, 1.0,  // 左下 红色
+     0.5, -0.5,    0.0, 1.0, 0.0, 1.0,  // 右下 绿色
+     0.5,  0.5,    0.0, 0.0, 1.0, 1.0,  // 右上 蓝色
+    -0.5,  0.5,    1.0, 1.0, 0.0, 1.0,  // 左上 黄色
+  ]);
+  // 4 个顶点 × 6 个浮点 = 24 个 float = 96 字节
+
+  // ======================== [数据流 2/6] CPU → GPU：上传数据到缓冲区 ========================
+  //
+  // [正常编程对比]
+  //   正常编程：我把数据存在变量里，CPU 直接读
+  //   WebGL：   我把数据拷贝到 GPU 显存里的 VBO（Vertex Buffer Object）
+  //            之后 GPU 从自己的显存读，不需要经过 CPU 和 PCIe 总线
+  const buffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+  // gl.STATIC_DRAW = 数据上传一次，被 GPU 多次读取（适合不变的几何体）
+
+  // ======================== [数据流 3/6] 告诉GPU如何从缓冲区"解读"数据 ========================
+  //
+  // 缓冲区里现在是 24 个连续的浮点数，GPU 不知道哪些是坐标，哪些是颜色
+  // 需要用 vertexAttribPointer 告诉 GPU 每 6 个 float 的布局：
+  //   [x y][r g b a]  — 每 6 个 float 一组，前 2 个是坐标，后 4 个是颜色
+  //
+  // [着色器思维]
+  //   着色器里的 attribute vec2 a_position 是一个"占位符"
+  //   GPU 会按照 vertexAttribPointer 指定的步长和偏移，自动从缓冲区
+  //   把数据填入 a_position —— 程序员不需要写"给 a_position 赋值为 vertices[i*6]"
+  const FLOAT_SIZE = 4;           // 每个 float 占 4 字节
+  const STRIDE = 6 * FLOAT_SIZE;  // 每组顶点占 6×4=24 字节
+
+  // 告诉GPU：a_position（location=0）的数据在哪里
+  const posLoc = gl.getAttribLocation(program, 'a_position');
+  gl.enableVertexAttribArray(posLoc);
+  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, STRIDE, 0);
+  //  参数: (location, 每顶点几个分量, 类型, 不归一化, 步长, 偏移)
+
+  // 告诉GPU：a_color（location=1）的数据在哪里
+  const colorLoc = gl.getAttribLocation(program, 'a_color');
+  gl.enableVertexAttribArray(colorLoc);
+  gl.vertexAttribPointer(colorLoc, 4, gl.FLOAT, false, STRIDE, 2 * FLOAT_SIZE);
+  //  偏移 = 2 个 float（跳过 x y，从 rgba 开始）
+
+  // ======================== 获取 uniform 变量位置 ========================
+  // uniform: 所有顶点共享的变量，由程序员通过 js 手动传入
+  const mvpLoc = gl.getUniformLocation(program, 'u_mvp');
+
+  // ======================== 手写矩阵运算（不用第三方库） ========================
+
+  // ---------- 4×4 矩阵乘法 C = A × B ----------
+  // A 和 B 都是 16 个 float 的 Float32Array（列优先，WebGL 标准）
+  function multiply(A, B) {
+    const C = new Float32Array(16);
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        C[col * 4 + row] =
+          A[0 * 4 + row] * B[col * 4 + 0] +
+          A[1 * 4 + row] * B[col * 4 + 1] +
+          A[2 * 4 + row] * B[col * 4 + 2] +
+          A[3 * 4 + row] * B[col * 4 + 3];
+      }
+    }
+    return C;
+  }
+
+  // ---------- 绕 Z 轴旋转矩阵（4×4，列优先） ----------
+  // 作用：让物体绕 Z 轴（屏幕向外）旋转 angle 弧度
+  function rotationZ(angle) {
+    const c = Math.cos(angle);
+    const s = Math.sin(angle);
+    return new Float32Array([
+       c,  s, 0, 0,
+      -s,  c, 0, 0,
+       0,  0, 1, 0,
+       0,  0, 0, 1,
+    ]);
+  }
+
+  // ---------- 平移矩阵 ----------
+  // 把物体沿 (tx, ty, tz) 移动，不改变朝向和大小
+  function translation(tx, ty, tz) {
+    return new Float32Array([
+      1,  0,  0,  0,
+      0,  1,  0,  0,
+      0,  0,  1,  0,
+      tx, ty, tz, 1,
+    ]);
+  }
+
+  // ---------- 透视投影矩阵 ----------
+  // 【投影矩阵】—— 把摄像机看到的 3D 世界压扁成 2D 画面
+  // 参数：
+  //   fov    = 视野角度（弧度），越大看得越广但越远越小
+  //   aspect = 画布宽/高，保证正方形不变形
+  //   near   = 近裁剪面距离，比这个更近的物体看不到
+  //   far    = 远裁剪面距离，比这个更远的物体看不到
+  function perspective(fov, aspect, near, far) {
+    const f = 1.0 / Math.tan(fov / 2);  // 焦距系数
+    const nf = 1.0 / (near - far);
+    return new Float32Array([
+      f / aspect, 0, 0,               0,
+      0,          f, 0,               0,
+      0,          0, (far + near) * nf, -1,
+      0,          0, 2 * far * near * nf, 0,
+    ]);
+  }
+
+  // ---------- lookAt 视图矩阵 ----------
+  // 【视图矩阵】—— 把整个世界搬到"摄像机眼前"，以摄像机为原点重新描述
+  //   eye    = 摄像机在世界中的位置（你站在哪）
+  //   center = 摄像机看向的目标点（你往哪看）
+  //   up     = 摄像机的"上方"方向（你头朝哪），通常是 (0,1,0)
+  function lookAt(eye, center, up) {
+    // 摄像机的前方向（从 eye 指向 center）
+    const f = [
+      center[0] - eye[0],
+      center[1] - eye[1],
+      center[2] - eye[2],
+    ];
+    let len = Math.sqrt(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+    f[0] /= len; f[1] /= len; f[2] /= len;
+
+    // 摄像机的右方向（前方向 × 上方向）
+    const s = [
+      f[1] * up[2] - f[2] * up[1],
+      f[2] * up[0] - f[0] * up[2],
+      f[0] * up[1] - f[1] * up[0],
+    ];
+    len = Math.sqrt(s[0] * s[0] + s[1] * s[1] + s[2] * s[2]);
+    s[0] /= len; s[1] /= len; s[2] /= len;
+
+    // 摄像机真正的"上方"（右 × 前）
+    const u = [
+      s[1] * f[2] - s[2] * f[1],
+      s[2] * f[0] - s[0] * f[2],
+      s[0] * f[1] - s[1] * f[0],
+    ];
+
+    // 视图矩阵 = 旋转（把世界转到摄像机坐标系） + 平移（把摄像机移到原点）
+    return new Float32Array([
+       s[0], u[0], -f[0], 0,
+       s[1], u[1], -f[1], 0,
+       s[2], u[2], -f[2], 0,
+      -s[0]*eye[0] - s[1]*eye[1] - s[2]*eye[2],
+      -u[0]*eye[0] - u[1]*eye[1] - u[2]*eye[2],
+       f[0]*eye[0] + f[1]*eye[1] + f[2]*eye[2],
+      1,
+    ]);
+  }
+
+  // ======================== 设置 WebGL 渲染状态 ========================
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0.1, 0.1, 0.18, 1.0);  // 深蓝黑底色
+  gl.useProgram(program);               // 使用我们的着色器程序
+
+  // ======================== 预计算不变的矩阵 ========================
+
+  // [视图矩阵] 摄像机站在 (0, -1, 2)，看向原点 (0, 0, 0)，头顶朝 Y+
+  //   → 摄像机在正方形的"前上方"，能看到正方形在下方
+  //   → 相当于你站在桌子前上方，低头看桌上的纸片
+  const viewMatrix = lookAt(
+    [0, -1, 2],   // eye:   摄像机位置
+    [0, 0, 0],    // center: 看向原点（正方形中心）
+    [0, 1, 0],    // up:     Y 轴向上
+  );
+
+  // [投影矩阵] 用透视投影，FOV=45°，宽高比 1:1
+  //   → 近处的物体大，远处的物体小，有立体感（近大远小）
+  const projMatrix = perspective(
+    45 * Math.PI / 180,  // fov:   45° 转弧度
+    canvas.width / canvas.height,  // aspect: 宽高比
+    0.1,                 // near:  近裁剪面
+    10,                  // far:   远裁剪面
+  );
+
+  // 预乘：视图 × 投影 = PV 矩阵（每帧不变，先算好省重复计算）
+  const pvMatrix = multiply(projMatrix, viewMatrix);
+
+  // ======================== 渲染循环 ========================
+  function render(timestamp) {
+    // 每帧清除颜色缓冲区（否则上一帧的像素会残留）
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    const angle = timestamp * 0.001;  // 每秒约旋转 1 弧度 ≈ 57°
+
+    // ---------- [模型矩阵] 物体自身的运动 ----------
+    // 1. 先绕 Z 轴旋转（让正方形转起来，每秒约 57°）
+    // 2. 再沿 Y 轴往上平移 0.2（把正方形抬高一点点，看得更清楚）
+    //
+    // 为什么先旋转再平移？
+    //   先旋转：绕自己的中心转（因为模型空间以原点为中心）
+    //   后平移：把旋转好的正方形搬到目标位置
+    //   如果先平移再旋转，正方形会绕世界原点公转，而不是自转
+    const modelMatrix = multiply(
+      translation(0.0, 0.2, 0.0),  // 沿 Y 轴抬高 0.2
+      rotationZ(angle),            // 绕 Z 轴旋转
+    );
+
+    // ---------- MVP 合体 ----------
+    // 投影(压扁) × 视图(换到摄像机坐标系) × 模型(摆放+旋转)
+    // 一次把模型空间坐标直接干到裁剪空间，着色器里一步搞定
+    const mvpMatrix = multiply(pvMatrix, modelMatrix);
+
+    // 传给着色器
+    gl.uniformMatrix4fv(mvpLoc, false, mvpMatrix);
+
+    // ---------- 发出绘制命令 ----------
+    //
+    // [数据流汇总]
+    //   此时数据已经在 GPU 缓冲区里了 —— [数据流 2/6]
+    //   顶点布局已经告诉 GPU 了      —— [数据流 3/6]
+    //   MVP 矩阵已传入              —— CPU → GPU 单次传输
+    //
+    //   下面这一行 drawArrays 是"点火"命令：
+    //   → GPU 启动渲染管线，进入 [数据流 4/5/6] 的 GPU 自动阶段
+    gl.drawArrays(gl.TRIANGLE_FAN, 0, 4);
+    //  TRIANGLE_FAN: v0 是中心点，v1, v2, v3, ... 连成扇形
+    //  0: 从缓冲区的第 0 个顶点开始
+    //  4: 共 4 个顶点
+
+    // 请求下一帧
+    requestAnimationFrame(render);
+  }
+
+  // ======================== 启动渲染循环 ========================
+  //
+  // requestAnimationFrame 在浏览器重绘前调用我们的 render 函数
+  // 通常每秒 60 次（60fps），timestamp 是页面加载以来的毫秒数
+  requestAnimationFrame(render);
+
+})();
+</script>
+
+<!--
+  =========================================================================
+  完 整 数 据 流 总 览
+  =========================================================================
+
+  [数据流 1/6] CPU主程序
+    准备正方形4个顶点的模型空间坐标(xy)和颜色(rgba)数据
+    → 打平成 Float32Array
+
+  [数据流 2/6] CPU → GPU 缓冲区
+    gl.createBuffer / gl.bindBuffer / gl.bufferData
+    → 数据从系统内存拷贝到 GPU 显存（VBO）
+    → 之后 GPU 直接从显存读取，不再经过 CPU
+
+  [数据流 3/6] GPU 自动：读取缓冲区 → 顶点着色器
+    vertexAttribPointer 告诉 GPU 数据布局
+    → GPU 自动按步长+偏移取出每个顶点的坐标和颜色
+    → 自动填入着色器的 attribute 变量 a_position、a_color
+
+  [数据流 4/6] GPU 自动：顶点着色器
+    vs_main 被 GPU 并行调用 4 次（每个顶点一次）
+    → 执行: gl_Position = u_mvp * vec4(a_position, 0.0, 1.0)
+    → u_mvp 内部包含了完整的坐标变换链：
+       模型矩阵（旋转+平移）→ 视图矩阵（摄像机视角）→ 投影矩阵（透视压扁）
+    → 输出: v_color = a_color（传给下一阶段）
+    → 程序员不写循环，并行是 GPU 硬件自动完成的
+
+  [数据流 5/6] GPU 自动：光栅化（Rasterization）
+    GPU 把正方形转化为屏幕上的一堆像素（片段/Fragment）
+    → 自动计算每个像素到 4 个顶点的距离
+    → 自动插值 varying 变量 v_color
+    → 例如：正方形中心的像素，离 4 个顶点距离相等
+             颜色 = 四顶点颜色平均值 = (红+绿+蓝+黄)/4
+
+  [数据流 6/6] GPU 自动：片元着色器
+    fs_main 被 GPU 并行调用 N 次（每个像素一次）
+    → 执行: gl_FragColor = v_color（插值后的颜色）
+    → 每个像素获得自己的颜色，写入帧缓冲
+    → 帧缓冲最终显示到屏幕上
+
+  =========================================================================
+  坐 标 变 换 链 详 解
+  =========================================================================
+
+  ┌─────────────┐    模型矩阵     ┌──────────┐    视图矩阵    ┌──────────┐    投影矩阵    ┌──────────┐
+  │ 模型空间     │ ────────────→ │ 世界空间  │ ───────────→ │ 观察空间  │ ───────────→ │ 裁剪空间  │
+  │ (-0.5~0.5)  │  旋转+平移     │ (摆放好)  │  摄像机视角   │ (摄像机前)│  透视压扁     │ (屏幕坐标)│
+  └─────────────┘               └──────────┘              └──────────┘              └──────────┘
+
+  模型空间 —— 建模时的坐标，只管"长什么样"，不管放哪怎么看
+    意义：改形状只改这里，不影响摆放和拍摄
+
+  世界空间 —— 物体在场景中的实际位置/朝向
+    意义：物体之间的位置关系在这里确定，布景时只管这一步
+
+  观察空间 —— 从摄像机视角重新描述的世界
+    意义：渲染的时候只关心"摄像机看到了什么"，跟世界绝对位置解耦
+
+  裁剪空间 —— 经过投影后的坐标，GPU 会自动把超出 [-1,1]³ 的部分切掉
+    意义：确定哪些在屏幕内哪些在屏幕外，同时保留深度用于遮挡判断
+
+  一句话总结：每个空间就是让不同的事情分开计算，互不干扰
+    - 改形状 → 动模型空间数据
+    - 改位置 → 动模型矩阵
+    - 改视角 → 动视图矩阵
+    - 改透视 → 动投影矩阵
+
+  =========================================================================
+  着 色 器 中 的 变 量 类 型 说 明
+  =========================================================================
+
+  attribute  → 每个顶点不同的数据（如坐标、颜色、法线）
+               GPU 从缓冲区自动读取并填入
+               在顶点着色器中是"只读输入"
+
+  uniform    → 所有顶点共享的数据（如变换矩阵、光照参数）
+               程序员通过 js 的 gl.uniformXxx 手动传入
+               在顶点和片元着色器中都可用，只读
+
+  varying    → 顶点着色器输出 → 光栅化自动插值 → 片元着色器输入
+               是连接顶点着色器和片元着色器的"管道"
+               插值是光栅化阶段 GPU 硬件自动完成的
+               程序员只声明，不手动插值
+
+  =========================================================================
+  正 常 编 程 vs 着 色 器 编 程 对 比 表
+  =========================================================================
+
+  | 维度           | 正常编程（CPU）                    | 着色器编程（GPU）                          |
+  |----------------|-----------------------------------|------------------------------------------|
+  | 执行模型       | 程序员写 for 循环遍历数据          | GPU 硬件自动并行，不写循环                  |
+  | 数据处理       | 一次处理所有数据                   | 只写"单个元素"的处理规则                    |
+  | 并行方式       | 程序员控制（如多线程）             | GPU 自动 SIMD 并行，对程序员透明            |
+  | 数据存放       | 系统内存（变量）                   | GPU 显存（缓冲区/纹理）                     |
+  | 数据流动       | CPU 直接读写                       | CPU→GPU（缓冲区）→着色器→光栅化→屏幕      |
+  | 函数调用次数   | for 循环控制                       | GPU 按顶点数/像素数自动决定                |
+  | 插值           | 程序员手动计算                     | GPU 光栅化阶段硬件自动插值                 |
+
+  =========================================================================
+-->
+</body>
+</html>

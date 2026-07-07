@@ -6,6 +6,7 @@ use iced::wgpu;
 pub struct Vertex {
     // 顶点在模型空间(局部坐标系)中的三维坐标位置 (x, y, z)
     pub pos: glam::Vec3,
+    pub color: glam::Vec3,
     // 表面法线方向，归一化向量，指向面外侧，用于漫反射/镜面反射等光照计算
     // pub normal: glam::Vec3,
     // // 切线向量(Tangent)，沿纹理UV的U方向，与法线、副法线构成切线空间(TBN矩阵)
@@ -20,9 +21,10 @@ impl Vertex {
     // 顶点属性数组，定义 GPU 如何解释顶点缓冲区中的每个字段
     // 使用 wgpu::vertex_attr_array! 宏生成 [wgpu::VertexAttribute; 4]
     // 每个属性包含: shader_location (slot编号), format (数据格式), offset (字节偏移，由宏自动计算)
-    const ATTRIBS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![
+    const ATTRIBS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
         // slot 0 = 位置坐标: 三个 f32，在 WGSL 中对应 @location(0) vec3<f32>
         0 => Float32x3,
+        1 => Float32x3,
         // // slot 1 = 法线向量: 三个 f32，在 WGSL 中对应 @location(1) vec3<f32>
         // 1 => Float32x3,
         // // slot 2 = 切线向量: 三个 f32，在 WGSL 中对应 @location(2) vec3<f32>

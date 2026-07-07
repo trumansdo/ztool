@@ -1,55 +1,13 @@
 //! # 网络抓包视图模块
-//!
-//! 负责渲染网络数据包捕获功能的 UI 界面。
-//!
-//! ## Rust 概念 — use 导入路径
-//! - `use crate::...` — 从 crate 根开始的绝对路径导入
-//! - `use super::...` — 从父模块开始的相对路径导入（super 指向 net_capture 模块）
-//! - `use iced::widget::{...}` — 花括号批量导入，避免重复写路径前缀
-//!
-//! ## Rust 概念 — 元组返回类型
-//! `(Element<'_, Msg>, Vec<Layered<'_, Msg>>)` 是一个 2-元组，用于同时返回：
-//! 1. 主内容元素
-//! 2. 叠加层（如 Toast）列表
-//!
-//! ## Rust 概念 — if/else 表达式
-//! Rust 中 if/else 是表达式（有返回值），可以直接嵌入在 row! 等宏中：
-//! ```
-//! row![if condition { button("A") } else { button("B") }]
-//! ```
-//! 这与 C/Java 中的三元运算符 `?:` 类似，但更强大。
 
 use crate::features::theme;
-use crate::ui::widgets::Layered;
 use iced::widget::{button, column, container, row, text, text_input};
 use iced::Element;
 use iced::Length;
 
 use super::{Msg, PacketCapture};
 
-/// 渲染网络抓包界面
-///
-/// # 参数
-/// - `capture`: 抓包器状态（不可变引用，只读渲染）
-///
-/// # 返回值
-/// 主内容元素 + 叠加层列表（当前无叠加层，返回空 Vec）
-///
-/// # UI 结构
-/// ```text
-/// ┌─────────────────────────────────┐
-/// │ 网络抓包                         │
-/// │ [网络接口输入框                  ]│
-/// │ [BPF过滤器输入框                ]│
-/// │ [开始/停止] [清空]               │
-/// │ 捕获的数据包 (共 X 个):          │
-/// │ ┌─────────────────────────────┐│
-/// │ │ [1] TCP 192.168.1.1:443     ││
-/// │ │ [2] UDP 10.0.0.1:53         ││
-/// │ └─────────────────────────────┘│
-/// └─────────────────────────────────┘
-/// ```
-pub fn view(capture: &PacketCapture) -> (Element<'_, Msg>, Vec<Layered<'_, Msg>>) {
+pub fn view(capture: &PacketCapture) -> Element<'_, Msg> {
     // text_input 是 iced 的文本输入组件
     // .on_input(Msg::InterfaceChanged) — 将输入变化事件映射为消息
     // .width(Length::Fill) — 宽度填满父容器
@@ -131,7 +89,5 @@ pub fn view(capture: &PacketCapture) -> (Element<'_, Msg>, Vec<Layered<'_, Msg>>
     .height(Length::Fill)
     .into();  // .into() 将 container 转换为 Element（利用 From trait）
 
-    // vec![] — 创建空 Vec 的宏，等价于 Vec::new()
-    // 当前页面无 Toast 叠加层
-    (content, vec![])
+    content
 }
