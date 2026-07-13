@@ -2,6 +2,7 @@
 //!
 //! 管理组件示例页面中所有子 tab 的交互状态。
 
+use iced::widget::{combo_box, pane_grid};
 use crate::ui::widgets::toast::{Toast, ToastLevel, ToastPosition};
 
 /// UI 组件库的子 tab 枚举
@@ -21,6 +22,13 @@ pub enum ComponentTab {
     Toast,
     ColorPicker,
     DatePicker,
+    Tooltip,
+    PickList,
+    ComboBox,
+    Float,
+    Pin,
+    Table,
+    PaneGrid,
 }
 
 #[derive(Debug, Clone)]
@@ -31,9 +39,10 @@ pub enum Msg {
     NumberChanged(i32),
     ToastShow(ToastLevel, String, ToastPosition),
     CloseToast(usize),
+    PickListSelected(Option<String>),
+    ComboBoxSelected(String),
 }
 
-#[derive(Default)]
 pub struct UiLibs {
     pub selected_tab: ComponentTab,
     pub click_count: u32,
@@ -41,6 +50,33 @@ pub struct UiLibs {
     pub number_value: i32,
     pub selected_color: iced::Color,
     pub toasts: Vec<Toast>,
+    pub pick_list_selected: Option<String>,
+    pub combo_box_state: combo_box::State<String>,
+    pub combo_box_selected: Option<String>,
+    pub pane_grid_state: pane_grid::State<()>,
+}
+
+impl Default for UiLibs {
+    fn default() -> Self {
+        Self {
+            selected_tab: ComponentTab::default(),
+            click_count: 0,
+            toggle_value: false,
+            number_value: 0,
+            selected_color: iced::Color::TRANSPARENT,
+            toasts: Vec::new(),
+            pick_list_selected: None,
+            combo_box_state: combo_box::State::new(vec![
+                "Rust".to_string(),
+                "Go".to_string(),
+                "Python".to_string(),
+                "TypeScript".to_string(),
+                "Zig".to_string(),
+            ]),
+            combo_box_selected: None,
+            pane_grid_state: pane_grid::State::new(()).0,
+        }
+    }
 }
 
 impl UiLibs {
@@ -72,6 +108,12 @@ pub fn update(libs: &mut UiLibs, msg: Msg) -> iced::Task<Msg> {
         }
         Msg::CloseToast(index) => {
             libs.toasts.remove(index);
+        }
+        Msg::PickListSelected(selected) => {
+            libs.pick_list_selected = selected;
+        }
+        Msg::ComboBoxSelected(selected) => {
+            libs.combo_box_selected = Some(selected);
         }
     }
     iced::Task::none()

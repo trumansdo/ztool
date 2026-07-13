@@ -12,11 +12,18 @@ pub fn view(pyramid: &Pyramid) -> Element<'_, Msg> {
     let controls = column![
         row![
             text("angle"),
-            slider(0.0..=PI, pyramid.scene.angle, move |b| { Msg::RotationChanged(b) })
+            slider(0.0..=PI, pyramid.scene.angle, move |b| Msg::RotationChanged(b))
                 .step(0.01)
                 .width(100)
         ]
-        .spacing(10)
+        .spacing(10),
+        row![
+            text("scale"),
+            slider(0.1..=3.0, pyramid.scene.scale, move |s| Msg::ScaleChanged(s))
+                .step(0.05)
+                .width(100)
+        ]
+        .spacing(10),
     ]
     .spacing(10)
     .padding(20)

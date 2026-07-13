@@ -4,7 +4,10 @@
 
 use crate::features::theme;
 use crate::features::ui_libs::update::ComponentTab;
-use iced::widget::{button, column, container, row, text, toggler, scrollable};
+use iced::widget::{
+    button, column, combo_box, container, float, pane_grid, pick_list,
+    row, scrollable, text, toggler, tooltip, Pin,
+};
 use iced::Element;
 
 use super::Msg;
@@ -28,6 +31,13 @@ pub fn view(libs: &UiLibs) -> Element<'_, Msg> {
         tab_button("Toast", ComponentTab::Toast, libs.selected_tab),
         tab_button("Color", ComponentTab::ColorPicker, libs.selected_tab),
         tab_button("Date", ComponentTab::DatePicker, libs.selected_tab),
+        tab_button("Tooltip", ComponentTab::Tooltip, libs.selected_tab),
+        tab_button("PickList", ComponentTab::PickList, libs.selected_tab),
+        tab_button("ComboBox", ComponentTab::ComboBox, libs.selected_tab),
+        tab_button("Float", ComponentTab::Float, libs.selected_tab),
+        tab_button("Pin", ComponentTab::Pin, libs.selected_tab),
+        tab_button("Table", ComponentTab::Table, libs.selected_tab),
+        tab_button("PaneGrid", ComponentTab::PaneGrid, libs.selected_tab),
     ]
     .spacing(theme::size(0.3).0 as u32);
 
@@ -45,6 +55,13 @@ pub fn view(libs: &UiLibs) -> Element<'_, Msg> {
         ComponentTab::Toast => view_toast(),
         ComponentTab::ColorPicker => view_color_picker(libs),
         ComponentTab::DatePicker => view_date_picker(),
+        ComponentTab::Tooltip => view_tooltip(),
+        ComponentTab::PickList => view_pick_list(libs),
+        ComponentTab::ComboBox => view_combo_box(libs),
+        ComponentTab::Float => view_float(),
+        ComponentTab::Pin => view_pin(),
+        ComponentTab::Table => view_table(),
+        ComponentTab::PaneGrid => view_pane_grid(libs),
     };
 
     let content = container(
@@ -391,6 +408,215 @@ fn view_date_picker() -> Element<'static, Msg> {
         text("").size(theme::font(0.3)),
         text("(需要状态管理，实际使用需要配合 show_picker 和 date 状态)")
             .size(theme::font(0.7)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_tooltip() -> Element<'static, Msg> {
+    let content = text("Hover over me").size(18);
+    let tip = text("This is a tooltip!").size(14);
+
+    column![
+        text("Tooltip 提示框组件").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("鼠标悬停在下方文本上查看提示效果:").size(theme::font(0.8)),
+        text("").size(theme::font(0.3)),
+        tooltip(content, tip, tooltip::Position::Top)
+            .gap(8)
+            .snap_within_viewport(true),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_pick_list(libs: &UiLibs) -> Element<'static, Msg> {
+    let options = vec![
+        "Apple".to_string(),
+        "Banana".to_string(),
+        "Cherry".to_string(),
+        "Durian".to_string(),
+    ];
+
+    column![
+        text("PickList 下拉选择组件").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("选择一个水果:").size(theme::font(0.8)),
+        text("").size(theme::font(0.3)),
+        pick_list::PickList::new(
+            options,
+            libs.pick_list_selected.clone(),
+            |s| Msg::PickListSelected(Some(s)),
+        )
+        .padding(8),
+        text("").size(theme::font(0.3)),
+        text(format!(
+            "已选择: {}",
+            libs.pick_list_selected.as_deref().unwrap_or("(无)")
+        )),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_combo_box(libs: &UiLibs) -> Element<'_, Msg> {
+    let selection = libs.combo_box_selected.as_ref();
+
+    column![
+        text("ComboBox 组合框组件").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("输入或选择编程语言:").size(theme::font(0.8)),
+        text("").size(theme::font(0.3)),
+        combo_box::ComboBox::new(
+            &libs.combo_box_state,
+            "Type to search...",
+            selection,
+            |s| Msg::ComboBoxSelected(s),
+        ),
+        text("").size(theme::font(0.3)),
+        text(format!(
+            "已选择: {}",
+            libs.combo_box_selected.as_deref().unwrap_or("(无)")
+        )),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_float() -> Element<'static, Msg> {
+    use iced::{Background, Border, Color, Length, Shadow, Theme, Vector};
+    use iced::widget::container;
+
+    let inner = container(
+        column![
+            text("Floating Content").size(18),
+            text("").size(theme::font(0.3)),
+            text("This box floats above").size(14),
+            text("other content when").size(14),
+            text("scale > 1.0").size(14),
+        ]
+        .spacing(4)
+        .padding(10),
+    )
+    .width(Length::Fixed(200.0))
+    .height(Length::Fixed(150.0))
+    .style(|_: &Theme| container::Style {
+        background: Some(Background::Color(Color::from_rgb(0.2, 0.3, 0.5))),
+        border: Border {
+            color: Color::from_rgb(0.5, 0.6, 0.8),
+            width: 2.0,
+            radius: 8.0.into(),
+        },
+        ..Default::default()
+    });
+
+    column![
+        text("Float 浮动组件").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("Float 将内容以 overlay 形式浮动（scale=1.3）:").size(theme::font(0.8)),
+        text("").size(theme::font(0.3)),
+        float::Float::new(inner)
+            .scale(1.3)
+            .style(|_: &Theme| float::Style {
+                shadow: Shadow {
+                    color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                    offset: Vector::new(2.0, 4.0),
+                    blur_radius: 12.0,
+                },
+                shadow_border_radius: 4.0.into(),
+            }),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_pin() -> Element<'static, Msg> {
+    column![
+        text("Pin 固定组件").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("Pin 将内容通过 overlay 固定在视口位置:").size(theme::font(0.8)),
+        text("").size(theme::font(0.3)),
+        Pin::new(text("This content uses Pin overlay")),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_table() -> Element<'static, Msg> {
+    use iced::{Border, Color, Length, Theme};
+
+    let header_cell = |label: &'static str| -> Element<'static, Msg> {
+        container(text(label).size(14))
+            .width(Length::Fill)
+            .padding([6, 10])
+            .style(|_: &Theme| container::Style {
+                background: Some(iced::Background::Color(Color::from_rgb(0.2, 0.25, 0.35))),
+                ..Default::default()
+            })
+            .into()
+    };
+
+    let data_cell = |label: &'static str| -> Element<'static, Msg> {
+        container(text(label).size(13))
+            .width(Length::Fill)
+            .padding([5, 10])
+            .into()
+    };
+
+    let header = row![
+        header_cell("Name"),
+        header_cell("Type"),
+        header_cell("Value"),
+    ]
+    .spacing(0);
+
+    let rows = column![
+        row![data_cell("Alpha"), data_cell("String"), data_cell("foo")].spacing(0),
+        row![data_cell("Beta"), data_cell("i32"), data_cell("42")].spacing(0),
+        row![data_cell("Gamma"), data_cell("f64"), data_cell("3.14")].spacing(0),
+        row![data_cell("Delta"), data_cell("bool"), data_cell("true")].spacing(0),
+    ]
+    .spacing(1);
+
+    column![
+        text("Table 表格组件").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("简单数据表格（手动 Column/Row 布局）:").size(theme::font(0.8)),
+        text("").size(theme::font(0.3)),
+        container(column![header, rows])
+            .width(Length::Fixed(400.0))
+            .style(|_: &Theme| container::Style {
+                background: Some(iced::Background::Color(Color::from_rgb(0.12, 0.14, 0.18))),
+                border: Border {
+                    color: Color::from_rgb(0.3, 0.35, 0.45),
+                    width: 1.0,
+                    radius: 4.0.into(),
+                },
+                ..Default::default()
+            }),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_pane_grid(libs: &UiLibs) -> Element<'_, Msg> {
+    use iced::Length;
+
+    let grid = pane_grid::PaneGrid::new(
+        &libs.pane_grid_state,
+        |_pane, _data, _is_maximized| {
+            text("Pane content").into()
+        },
+    )
+    .width(Length::Fill)
+    .height(Length::Fixed(300.0));
+
+    column![
+        text("PaneGrid 分格面板组件").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("可拖拽分割线的多面板布局:").size(theme::font(0.8)),
+        text("").size(theme::font(0.3)),
+        grid,
     ]
     .spacing(theme::size(0.3).0 as u32)
     .into()
