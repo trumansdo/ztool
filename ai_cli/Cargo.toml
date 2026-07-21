@@ -1,0 +1,35 @@
+[package]
+name = "ai_cli"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clap.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+scraper.workspace = true
+headless_chrome.workspace = true
+htmd.workspace = true
+url.workspace = true
+
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+which.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+dirs = { workspace = true }
+toml.workspace = true
+readability = { workspace = true, default-features = false }
+
+# 二进制目标
+[[bin]]
+name = "ai_cli"
+path = "src/main.rs"
+
+[[bin]]
+name = "ai_fetch"
+path = "src/bin/ai_fetch.rs"
+
+
