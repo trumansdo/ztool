@@ -1,11 +1,11 @@
 //! 组合 CLI 参数定义（仅用于 main.rs 组合工具）
 //!
 //! 使用 `clap` 的 derive API 声明式定义命令行接口。
-//! 共享类型（OutputFormat, ProviderType）从 `ai_cli` 库导入。
+//! 共享类型（OutputFormat）从 `ai_cli` 库导入。
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
-use ai_cli::{OutputFormat, ProviderType};
+use ai_cli::OutputFormat;
 
 /// AI CLI —— 纯本地 AI 模型交互与网页获取工具
 #[derive(Parser, Debug)]
@@ -44,27 +44,6 @@ pub enum Commands {
 
         #[arg(long, default_value_t = 30)]
         timeout: u64,
-    },
-
-    /// 交互式 AI 对话（REPL 模式）
-    Chat {
-        #[arg(long, short = 'p', value_enum, default_value_t = ProviderType::Openai)]
-        provider: ProviderType,
-
-        #[arg(long, short = 'm', value_name = "MODEL")]
-        model: Option<String>,
-    },
-
-    /// 单轮 AI 问答
-    Ask {
-        #[arg(value_name = "PROMPT")]
-        prompt: String,
-
-        #[arg(long, short = 'p', value_enum, default_value_t = ProviderType::Openai)]
-        provider: ProviderType,
-
-        #[arg(long, short = 'm', value_name = "MODEL")]
-        model: Option<String>,
     },
 
     /// 配置管理

@@ -38,10 +38,10 @@ pub struct FetchResult {
 /// - 网络请求超时
 /// - HTTP 非 2xx 状态码
 /// - 响应体过大（> 5MB）
-pub async fn fetch_static(url: &str, timeout_secs: u64) -> Result<FetchResult> {
-    info!(%url, "Starting static HTTP fetch");
+pub async fn fetch_static(url: &str, timeout_secs: u64, proxy_url: Option<&str>) -> Result<FetchResult> {
+    info!(%url, ?proxy_url, "Starting static HTTP fetch");
 
-    let client = reqwest::Client::builder()
+    let mut client_builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(timeout_secs))
         .user_agent(USER_AGENT)
         .default_headers({
@@ -60,8 +60,18 @@ pub async fn fetch_static(url: &str, timeout_secs: u64) -> Result<FetchResult> {
             );
             headers
         })
-        .redirect(reqwest::redirect::Policy::limited(5))
-        .build()?;
+        .redirect(reqwest::redirect::Policy::limited(5));
+
+    // 配置代理
+    if let Some(proxy) = proxy_url {
+        client_builder = client_builder.proxy(
+            reqwest::Proxy::all(proxy)
+                .map_err(|e| AiCliError::General(format!("Invalid proxy URL '{}': {}", proxy, e)))?
+        );
+        info!(%proxy, "Using HTTP proxy");
+    }
+
+    let client = client_builder.build()?;
 
     let response = client.get(url).send().await?;
 

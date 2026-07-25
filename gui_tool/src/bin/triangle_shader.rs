@@ -8,14 +8,14 @@ use iced::{
     Length::Fill,
     Task,
     wgpu::{
-        BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
-        BlendState, Buffer, BufferAddress, BufferUsages, ColorTargetState, ColorWrites, CompareFunction,
-        DepthBiasState, DepthStencilState, Extent3d, FragmentState, FrontFace, LoadOp, MultisampleState, Operations,
-        PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
-        RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline,
-        RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, StoreOp, Texture,
-        TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor, VertexAttribute,
-        VertexBufferLayout, VertexState, VertexStepMode,
+        BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
+        BindingType, BlendState, Buffer, BufferAddress, BufferUsages, ColorTargetState,
+        ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Extent3d, FragmentState, FrontFace, LoadOp,
+        MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode,
+        PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+        RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, ShaderModuleDescriptor, ShaderSource,
+        ShaderStages, StencilState, StoreOp, Texture, TextureDimension, TextureFormat, TextureUsages, TextureView,
+        TextureViewDescriptor, VertexAttribute, VertexBufferLayout, VertexState, VertexStepMode,
         util::{BufferInitDescriptor, DeviceExt},
         wgt::{BufferDescriptor, TextureDescriptor},
     },
@@ -48,12 +48,12 @@ struct TrianglePipeline {
 impl Pipeline for TrianglePipeline {
     fn new(device: &iced::wgpu::Device, _queue: &iced::wgpu::Queue, format: iced::wgpu::TextureFormat) -> Self {
         let shader_str = include_str!("triangle_shader.wgsl");
-        //  创建着色器模块 (device.create_shader_module)
+        // TODO: 创建着色器模块 (device.create_shader_module)
         let shader_module = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("Triangle Shader"),
             source: ShaderSource::Wgsl(shader_str.into()),
         });
-        //  创建管线布局 (device.create_pipeline_layout, bind_group_layouts 为空)
+        // TODO: 创建管线布局 (device.create_pipeline_layout, bind_group_layouts 为空)
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Triangle BindGroup Layout"),
             entries: &[
@@ -84,7 +84,7 @@ impl Pipeline for TrianglePipeline {
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
-        //  创建渲染管线 (device.create_render_pipeline)
+        // TODO: 创建渲染管线 (device.create_render_pipeline)
         //   - 顶点着色器入口 vs_main
         //   - 片段着色器入口 fs_main
         //   - 图元拓扑 TriangleList
@@ -147,34 +147,34 @@ impl Pipeline for TrianglePipeline {
             multiview: None,
             cache: None,
         });
-        //  构建三角形顶点数据（3个顶点，用原生数组而非 Vertex 结构体）
+        // TODO: 构建三角形顶点数据（3个顶点，用原生数组而非 Vertex 结构体）
         let vertices: [f32; 18] = [
             -0.5, -0.5, 0.0, 1.0, 0.0, 0.0, // 顶点0: 位置(-0.5,-0.5,0), 颜色红
             0.5, -0.5, 0.0, 0.0, 1.0, 0.0, // 顶点1: 位置(0.5,-0.5,0), 颜色绿
             0.0, 0.5, 0.0, 0.0, 0.0, 1.0, // 顶点2: 位置(0.0,0.5,0), 颜色蓝
         ];
 
-        //  创建顶点缓冲区 (device.create_buffer_init)
+        // TODO: 创建顶点缓冲区 (device.create_buffer_init)
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::bytes_of(&vertices),
             usage: BufferUsages::VERTEX,
         });
-        //  创建 vp_buffer
+        // TODO: 创建 vp_buffer
         let vp_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("VP Buffer"),
             size: std::mem::size_of::<Mat4>() as BufferAddress,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        //  创建 rotation_buffer
+        // TODO: 创建 rotation_buffer
         let rotation_buffer = device.create_buffer(&BufferDescriptor {
             label: Some("Rotation Buffer"),
             size: std::mem::size_of::<Mat4>() as BufferAddress,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        //  创建 bind_group
+        // TODO: 创建 bind_group
         let bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Bind Group"),
             layout: &bind_group_layout,
@@ -189,7 +189,7 @@ impl Pipeline for TrianglePipeline {
                 },
             ],
         });
-        //  返回 Self (depth_texture 初始为 None)
+        // TODO: 返回 Self (depth_texture 初始为 None)
         Self {
             render_pipeline,
             vertex_buffer,
@@ -220,20 +220,20 @@ impl Primitive for TrianglePrimitive {
         bounds: &iced::Rectangle,
         viewport: &Viewport,
     ) {
-        //  检测 bounds 宽高，与现有 depth_texture 尺寸对比，未变则跳过重建
-        //  创建深度纹理 (device.create_texture)
+        // TODO: 检测 bounds 宽高，与现有 depth_texture 尺寸对比，未变则跳过重建
+        // TODO: 创建深度纹理 (device.create_texture)
         //   - 格式 Depth32Float
         //   - 用途 RENDER_ATTACHMENT
-        //   - 尺寸匹配视口物理像素
-        let physical_size = viewport.physical_size();
-        let bw = physical_size.width;
-        let bh = physical_size.height;
+        //   - 尺寸匹配 bounds 宽高
+        let bw = bounds.width.ceil() as u32;
+        let bh = bounds.height.ceil() as u32;
+        // 已有纹理大小如果小于了窗口变动就需要更新
         let need_new: bool = match &pipeline.depth_texture {
-            Some(x) => x.width() != bw || x.height() != bh,
+            Some(x) => x.width() < bw || x.height() < bh,
             None => true,
         };
         if need_new && bw > 0 && bh > 0 {
-            //  将纹理视图存入 pipeline.depth_texture
+            // TODO: 将纹理视图存入 pipeline.depth_texture
             pipeline.depth_texture = Some(device.create_texture(&TextureDescriptor {
                 label: Some("Triangle depth texture"),
                 size: Extent3d {
@@ -249,14 +249,15 @@ impl Primitive for TrianglePrimitive {
                 view_formats: &[iced::wgpu::TextureFormat::Depth32Float],
             }));
         }
-        //  创建深度纹理视图 (texture.create_view)
+        // TODO: 创建深度纹理视图 (texture.create_view)
         pipeline.depth_texture_view = if let Some(ref tex) = pipeline.depth_texture {
             Some(tex.create_view(&TextureViewDescriptor::default()))
         } else {
             None
         };
+        let physical_size = viewport.physical_size();
         if physical_size.width > 0 && physical_size.height > 0 {
-            //  计算并上传 uniform 数据（投影矩阵等）到 pipeline.uniform_buffer
+            // TODO: 计算并上传 uniform 数据（投影矩阵等）到 pipeline.uniform_buffer
             // 这里面对应相机概念
             let eye = vec3(0.0, 1.5, 3.0);
             let center = glam::Vec3::ZERO;
@@ -269,8 +270,16 @@ impl Primitive for TrianglePrimitive {
             let projection_matrix = glam::Mat4::perspective_rh(fov_y, aspect, z_near, z_far);
 
             let vp_matrix = OPENGL_TO_WGPU_MATRIX * projection_matrix * view_matrix;
-            queue.write_buffer(&pipeline.vp_buffer, 0, bytemuck::cast_slice(&[vp_matrix]));
-            queue.write_buffer(&pipeline.rotation_buffer, 0, bytemuck::cast_slice(&[self.rotation_matrix]));
+            queue.write_buffer(
+                &pipeline.vp_buffer,
+                0,
+                bytemuck::cast_slice(&[vp_matrix]),
+            );
+            queue.write_buffer(
+                &pipeline.rotation_buffer,
+                0,
+                bytemuck::cast_slice(&[self.rotation_matrix]),
+            );
         }
     }
 
@@ -286,17 +295,17 @@ impl Primitive for TrianglePrimitive {
         target: &iced::wgpu::TextureView,
         clip_bounds: &iced::Rectangle<u32>,
     ) {
-        //  获取深度纹理，为空则 return
+        // TODO: 获取深度纹理，为空则 return
         if pipeline.depth_texture == None {
             return;
         }
-        //  创建深度纹理 view
+        // TODO: 创建深度纹理 view
         let depth_view = pipeline
             .depth_texture_view
             .as_ref()
             .unwrap();
 
-        //  encoder.begin_render_pass
+        // TODO: encoder.begin_render_pass
         //   - 颜色附件: view=target, load=Load, store=Store
         //   - 深度附件: load=Clear(1.0), store=Store
         let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
@@ -320,7 +329,7 @@ impl Primitive for TrianglePrimitive {
             }),
             ..Default::default()
         });
-        //  render_pass.set_viewport
+        // TODO: render_pass.set_viewport
         render_pass.set_viewport(
             clip_bounds.x as f32,
             clip_bounds.y as f32,
@@ -329,14 +338,14 @@ impl Primitive for TrianglePrimitive {
             0.0,
             1.0,
         );
-        //  render_pass.set_scissor_rect
+        // TODO: render_pass.set_scissor_rect
         render_pass.set_scissor_rect(clip_bounds.x, clip_bounds.y, clip_bounds.width, clip_bounds.height);
-        //  render_pass.set_pipeline
+        // TODO: render_pass.set_pipeline
         render_pass.set_pipeline(&pipeline.render_pipeline);
-        //  render_pass.set_vertex_buffer
+        // TODO: render_pass.set_vertex_buffer
         render_pass.set_vertex_buffer(0, pipeline.vertex_buffer.slice(..));
         render_pass.set_bind_group(0, &pipeline.bind_group, &[]);
-        //  render_pass.draw(0..vertex_count, 0..1)
+        // TODO: render_pass.draw(0..vertex_count, 0..1)
         render_pass.draw(0..pipeline.vertex_count, 0..1);
     }
 }

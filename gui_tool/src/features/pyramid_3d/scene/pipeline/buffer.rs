@@ -4,8 +4,7 @@
 
 use iced::wgpu;
 
-/// 自定义的动态缓冲区容器（支持resize操作）
-#[derive(Debug)]
+// 自定义的动态缓冲区容器（支持resize操作）
 pub struct Buffer {
     pub raw: wgpu::Buffer,                     // 实际的wgpu缓冲区对象
     label: &'static str,                       // 调试标签（用于GPU调试工具识别此缓冲区）

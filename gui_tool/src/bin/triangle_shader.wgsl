@@ -1,3 +1,8 @@
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) color: vec3<f32>,
+}
+
 @group(0) @binding(0)
 var<uniform> vp_matrix: mat4x4<f32>;
 
@@ -10,9 +15,9 @@ struct VertexOutput {
 }
 
 @vertex
-fn vx_main(@location(0) position: vec3<f32>, @location(1) color: vec3<f32>) -> VertexOutput {
-    var pos = vp_matrix * rotation_matrix * vec4<f32>(position, 1.0);
-    return VertexOutput(pos, color);
+fn vx_main(input: VertexInput) -> VertexOutput {
+    var pos = vp_matrix * rotation_matrix * vec4<f32>(input.position, 1.0);
+    return VertexOutput(pos, input.color);
 }
 
 @fragment
