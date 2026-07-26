@@ -2,52 +2,61 @@
 //!
 //! 处理用户交互、启动异步扫描任务、实时更新 UI 状态。
 //!
-//! # 异步架构
+//! # 异步架构（iced + tokio 最佳实践）
 //! ```text
 //! StartScan 消息
-//!   └── Task::run(stream::channel)        // 创建 iced 异步通道
-//!        └── tokio::spawn_blocking(...)    // 在阻塞线程池中运行
-//!             ├── scan::parse_ip_range()   // 解析 IP 范围
-//!             ├── scan::scan_host()        // 并行扫描（rayon）
-//!             │    └── 每个端口 → try_send(PortScanned)
+//!   └── Task::run(stream::channel)          // iced 异步流适配器
+//!        └── async {                        // 在 tokio 运行时上执行
+//!             ├── parse_ip_range()          // 纯计算，同步执行
+//!             ├── syn_available?
+//!             │    ├─ Y → spawn_blocking(syn_scan)  // 原始套接字阻塞
+//!             │    └─ N → connect_scan_host_async() // 全异步 TCP Connect
+//!             │           └─ tokio::spawn × N       // 协程级并发
+//!             │              └─ tokio::time::timeout(500ms, TcpStream::connect)
 //!             └── try_send(ScanComplete)
+//!        }
 //! ```
 //!
-//! # Rust 语法要点
+//! # iced + tokio 集成模式
 //!
-//! ## `futures::channel::mpsc` —— 多生产者单消费者通道
-//! `mpsc::Sender` 可以从多个线程发送消息到同一个接收端。
-//! `try_send()` 非阻塞发送，如果缓冲区满则返回错误（不会死锁）。
-//! 设置 buffer 大小 100，缓冲区满了丢弃消息（扫描结果太快时防止 UI 卡顿）。
+//! ## 模式 1: 全异步操作（推荐）
+//! 适合非阻塞 I/O（如 HTTP 请求、TCP 连接）：
+//! ```text
+//! stream::channel(buffer, |sender| async move {
+//!     tokio::spawn(async { ... })  // 在 tokio 运行时上创建协程
+//!     tokio::time::timeout(dur, fut).await
+//! })
+//! ```
 //!
-//! ## `iced::stream::channel` —— iced 的异步流适配
-//! `stream::channel(buffer, |sender| async move { ... })` 创建一个 iced 流：
-//! 1. iced 分配一个 mpsc 通道
-//! 2. 将 receiver 包装为 iced Stream
-//! 3. 调用闭包，传入 sender，在异步上下文中执行
-//! 4. 闭包通过 sender 发送的消息自动进入 iced 的消息循环
+//! ## 模式 2: 阻塞操作（回调风格）
+//! 适合 CPU 密集或原始套接字操作：
+//! ```text
+//! tokio::task::spawn_blocking(move || {
+//!     // blocking code
+//!     sender.try_send(msg);  // 通过 channel 回传结果
+//! })
+//! ```
 //!
-//! ## `tokio::task::spawn_blocking` —— 阻塞任务
-//! 在 tokio 的阻塞线程池上运行 CPU 密集/阻塞代码。
-//! 不同于 `tokio::spawn`（适合异步代码），`spawn_blocking` 不会阻塞异步运行时，
-//! 因为它运行在独立的线程池中。
+//! ## 对比: spawn_blocking vs tokio::spawn
+//! - `spawn_blocking`: OS 线程级，适合 CPU 密集/原始套接字
+//! - `tokio::spawn`: 协程级（无栈），适合 async I/O，数万并发无压力
+//! - 本扫描器针对 Connect 模式使用后者，SYN 模式使用前者
 //!
-//! ## `move` 闭包
-//! `move || { ... }` 和 `move |sender| async move { ... }`
-//! `move` 关键字强制闭包获取所捕获变量的所有权（而非借用）。
-//! 这是必需的，因为闭包会被发送到另一个线程执行，
-//! 无法保证原始变量的生命周期覆盖闭包的生命周期。
-//!
-//! ## `let _ = expr;` —— 忽略 Result
-//! `let _ = sender.try_send(msg);` 忽略 try_send 的返回值。
-//! 如果改为 `sender.try_send(msg).unwrap()`，缓冲区满时会 panic。
-//! `let _` 是显式忽略值的惯用写法，比不接收返回值更清晰地表达意图。
+//! ## 通道设计
+//! `futures::channel::mpsc::Sender` 是 iced 原生的跨线程通信方式：
+//! - `try_send()` 非阻塞，缓冲区满时丢弃（防 UI 卡顿）
+//! - `Sender: Clone`，可多生产者共享
+//! - `iced::stream::channel` 内部将 mpsc::Receiver 包装为 Stream
+//! - 消息通过 Stream 进入 iced 的 update 循环（主线程安全）
+
+#[cfg(unix)]
+use std::net::Ipv4Addr;
 
 use futures::channel::mpsc;
 use iced::{Task, stream};
 use std::fmt;
 
-use super::scan::{self, PortInfo};
+use super::scan::{self, PortInfo, ScanMethod};
 
 /// 扫描模式枚举
 ///
@@ -190,8 +199,6 @@ pub fn update(scanner: &mut NetScanner, msg: Msg) -> Task<Msg> {
         }
 
         Msg::StartScan => {
-            // `clone()` 复制数据，因为闭包需要获取所有权
-            // String 的 clone 会分配新的堆内存
             let target = scanner.target.clone();
             let mode = scanner.scan_mode;
 
@@ -207,76 +214,143 @@ pub fn update(scanner: &mut NetScanner, msg: Msg) -> Task<Msg> {
             scanner.open_ports.clear();
             scanner.scanned_count = 0;
             let ports = mode.ports();
-            scanner.total_ports = ports.len();
+            let port_count = ports.len();
+            scanner.total_ports = port_count;
             scanner.results.push(format!("开始扫描: {} ({})", target, mode.label()));
             scanner.logs.push(format!("[*] 开始扫描目标: {} (模式: {})", target, mode.label()));
-
-            let port_count = ports.len();
             scanner.logs.push(format!("[*] 共 {} 个端口需要扫描", port_count));
 
-            // 创建异步扫描任务
-            //
-            // `Task::run(stream, mapper)` 签名：
-            // - stream: impl Stream<Item = Msg>
-            // - mapper: Fn(Msg) -> Msg（这里直接返回自身）
-            //
-            // `stream::channel(100, factory)`:
-            // - 100: 缓冲区大小
-            // - factory: FnOnce(Sender) -> impl Future
+            // iced + tokio 异步架构：
+            // stream::channel 创建 iced 原生流适配器
+            // 内部 async 闭包在 tokio 运行时上执行
             Task::run(
                 stream::channel(100, move |mut sender: mpsc::Sender<Msg>| async move {
-                    // `spawn_blocking` 在 tokio 阻塞线程池中运行闭包
-                    tokio::task::spawn_blocking(move || {
-                        match scan::parse_ip_range(&target) {
-                            Ok(ips) => {
-                                let _ = sender.try_send(Msg::ScanLog(
-                                    format!("[*] 准备完成，共 {} 个主机", ips.len())
-                                ));
-                                let total = ips.len() * ports.len();
-                                let _ = sender.try_send(Msg::ScanTotalPorts(total));
-
-                                let mut all_results = Vec::new();
-
-                                // 遍历每个 IP
-                                for ip in ips {
-                                    let _ = sender.try_send(Msg::ScanLog(
-                                        format!("[*] 扫描主机: {}", ip)
-                                    ));
-
-                                    // 克隆 sender 传给回调（clone 后两个 sender 共享同一个通道）
-                                    let mut s = sender.clone();
-                                    // rayon 并行扫描当前主机的所有端口
-                                    let open_ports = scan::scan_host(ip, &ports, move |port_info| {
-                                        let _ = s.try_send(Msg::PortScanned {
-                                            ip: ip.to_string(),
-                                            port: port_info.port,
-                                            is_open: port_info.is_open,
-                                            service: port_info.service,
-                                        });
-                                    });
-
-                                    if !open_ports.is_empty() {
-                                        all_results.push((ip.to_string(), open_ports.clone()));
-                                        let _ = sender.try_send(Msg::HostScanComplete {
-                                            ip: ip.to_string(),
-                                            open_ports,
-                                        });
-                                    }
-                                }
-
-                                let _ = sender.try_send(Msg::ScanComplete {
-                                    results: all_results
-                                });
-                            }
-                            Err(e) => {
-                                let _ = sender.try_send(Msg::ScanError(e.to_string()));
-                            }
+                    // ── 1. 解析 IP 范围（纯计算，直接在 async 上下文中执行） ──
+                    let ips = match scan::parse_ip_range(&target) {
+                        Ok(ips) => ips,
+                        Err(e) => {
+                            let _ = sender.try_send(Msg::ScanError(e.to_string()));
+                            return;
                         }
-                    })
-                    .await
-                    .unwrap();  // spawn_blocking 几乎不会失败
+                    };
+
+                    let _ = sender.try_send(Msg::ScanLog(
+                        format!("[*] 准备完成，共 {} 个主机", ips.len())
+                    ));
+                    let total = ips.len() * ports.len();
+                    let _ = sender.try_send(Msg::ScanTotalPorts(total));
+
+                    let mut all_results: Vec<(String, Vec<PortInfo>)> = Vec::new();
+
+                    // ── 2. 遍历每个目标 IP ──
+                    for ip in ips {
+                        let _ = sender.try_send(Msg::ScanLog(
+                            format!("[*] 扫描主机: {}", ip)
+                        ));
+
+                        // 自动选择扫描方法
+                        let (open_ports, _method): (Vec<PortInfo>, ScanMethod) = {
+                            // Ipv4Addr 是 Copy 类型，先复制一份供异步闭包捕获
+                            let target_ip = ip;
+                            let host_ports = ports.clone();
+
+                            #[cfg(unix)]
+                            if scan::check_syn_available() {
+                                // ── 路径 A: SYN 半开扫描 ──
+                                // 原始套接字操作 → 需 spawn_blocking
+                                let mut s = sender.clone();
+                                let src = scan::get_source_ip(target_ip)
+                                    .unwrap_or(Ipv4Addr::new(0, 0, 0, 0));
+
+                                let result = tokio::task::spawn_blocking(move || {
+                                    scan::syn_scan_host(
+                                        src, target_ip, &host_ports,
+                                        move |info| {
+                                            let _ = s.try_send(Msg::PortScanned {
+                                                ip: target_ip.to_string(),
+                                                port: info.port,
+                                                is_open: info.is_open,
+                                                service: info.service,
+                                            });
+                                        },
+                                        std::time::Duration::from_secs(5),
+                                    )
+                                }).await;
+
+                                match result {
+                                    Ok(Ok((_total, _open, _closed, _filtered))) => {
+                                        (Vec::new(), ScanMethod::Syn)
+                                    }
+                                    Ok(Err(e)) => {
+                                        let _ = sender.try_send(Msg::ScanLog(
+                                            format!("[!] SYN 失败 ({}), 回退 Connect", e)
+                                        ));
+                                        let mut s = sender.clone();
+                                        let results = scan::connect_scan_host_async(
+                                            target_ip, &host_ports, move |info| {
+                                                let _ = s.try_send(Msg::PortScanned {
+                                                    ip: target_ip.to_string(),
+                                                    port: info.port,
+                                                    is_open: info.is_open,
+                                                    service: info.service,
+                                                });
+                                            },
+                                            100,
+                                        ).await;
+                                        (results, ScanMethod::Connect)
+                                    }
+                                    Err(_) => (Vec::new(), ScanMethod::Syn),
+                                }
+                            } else {
+                                // ── 路径 B: 全异步 TCP Connect 扫描 ──
+                                let mut s = sender.clone();
+                                let results = scan::connect_scan_host_async(
+                                    target_ip, &host_ports, move |info| {
+                                        let _ = s.try_send(Msg::PortScanned {
+                                            ip: target_ip.to_string(),
+                                            port: info.port,
+                                            is_open: info.is_open,
+                                            service: info.service,
+                                        });
+                                    },
+                                    100,
+                                ).await;
+                                (results, ScanMethod::Connect)
+                            }
+
+                            // Windows: 直接走 Connect
+                            #[cfg(windows)]
+                            {
+                                let mut s = sender.clone();
+                                let results = scan::connect_scan_host_async(
+                                    target_ip, &host_ports, move |info| {
+                                        let _ = s.try_send(Msg::PortScanned {
+                                            ip: target_ip.to_string(),
+                                            port: info.port,
+                                            is_open: info.is_open,
+                                            service: info.service,
+                                        });
+                                    },
+                                    100,
+                                ).await;
+                                (results, ScanMethod::Connect)
+                            }
+                        };
+
+                        if !open_ports.is_empty() {
+                            all_results.push((ip.to_string(), open_ports.clone()));
+                            let _ = sender.try_send(Msg::HostScanComplete {
+                                ip: ip.to_string(),
+                                open_ports,
+                            });
+                        }
+                    }
+
+                    // ── 3. 扫描完成 ──
+                    let _ = sender.try_send(Msg::ScanComplete {
+                        results: all_results
+                    });
                 }),
-                // mapper: 直接返回消息自身（类型已经是 Msg，无需映射）
                 |msg| msg,
             )
         }
