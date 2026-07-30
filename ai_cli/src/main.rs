@@ -7,10 +7,10 @@ mod cli;
 use clap::Parser;
 use cli::args::{Cli, Commands};
 use ai_cli::{run_fetch, run_config};
-use tracing::error;
+use anyhow::Result;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             std::env::var("RUST_LOG").unwrap_or_else(|_| "ai_cli=warn".into()),
@@ -21,18 +21,14 @@ async fn main() {
 
     let cli = Cli::parse();
 
-    let result = match &cli.command {
+    match &cli.command {
         Commands::Fetch { url, spa, output, format, browser, timeout } => {
-            run_fetch(url, *spa, output.as_deref(), format, browser.as_deref(), *timeout, None).await
+            run_fetch(url, *spa, output.as_deref(), format, browser.as_deref(), *timeout, None).await?;
         }
         Commands::Config { action, key, value } => {
-            run_config(action.as_deref(), key.as_deref(), value.as_deref())
+            run_config(action.as_deref(), key.as_deref(), value.as_deref())?;
         }
-    };
-
-    if let Err(e) = result {
-        error!(%e, "Command failed");
-        eprintln!("\x1b[31merror:\x1b[0m {}", e);
-        std::process::exit(1);
     }
+
+    Ok(())
 }

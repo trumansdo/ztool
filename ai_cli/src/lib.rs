@@ -28,6 +28,7 @@ pub mod fetch;
 pub mod output;
 pub mod error;
 pub mod db;
+pub mod excel;
 
 // 重新导出高频类型，方便 CLI 层使用
 pub use output::format::OutputFormat;
@@ -235,16 +236,16 @@ pub fn run_db_list() -> Result<()> {
 }
 
 /// 执行数据库查询
-pub fn run_db_query(db_name: &str, sql: &str, output_format: &DbOutputFormat) -> Result<()> {
+pub fn run_db_query(db_name: &str, sql: &str, limit: usize, output_format: &DbOutputFormat) -> Result<()> {
     let mgr = DatabaseManager::new()?;
-    let result = mgr.execute_query(db_name, sql)?;
+    let result = mgr.execute_query(db_name, sql, limit)?;
     format_and_print(&result, output_format)
 }
 
-/// 执行 INSERT / UPDATE / DELETE
-pub fn run_db_execute(db_name: &str, sql: &str) -> Result<()> {
+/// 执行 INSERT / UPDATE / DELETE（多条统一事务 commit）
+pub fn run_db_execute(db_name: &str, sqls: &[String]) -> Result<()> {
     let mgr = DatabaseManager::new()?;
-    let rows = mgr.execute_dml(db_name, sql)?;
+    let rows = mgr.execute_dml(db_name, sqls)?;
     println!("{{\"rows_affected\": {}}}", rows);
     Ok(())
 }

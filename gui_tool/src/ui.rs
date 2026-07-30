@@ -97,6 +97,7 @@ pub enum Tab {
     /// UI 组件库展示，测试 iced_aw 各种组件
     UiLibs,
     Pyramid3d,
+    MusicWave,
 }
 
 // `impl From<Tab> for String`: 实现类型转换 —— 从 Tab 转为 String
@@ -116,6 +117,7 @@ impl From<Tab> for String {
             Tab::NetCapture => "net_capture".to_string(),
             Tab::UiLibs => "ui_libs".to_string(),
             Tab::Pyramid3d => "pyramid_3d".to_string(),
+            Tab::MusicWave => "music_wave".to_string(),
         }
     }
 }
@@ -139,6 +141,7 @@ impl Tab {
             "net_capture" => Some(Tab::NetCapture),
             "ui_libs" => Some(Tab::UiLibs),
             "pyramid_3d" => Some(Tab::Pyramid3d),
+            "music_wave" => Some(Tab::MusicWave),
             _ => None,
         }
     }
@@ -176,6 +179,7 @@ pub enum Message {
     /// UI 组件库消息（切换子标签页、组件交互等）
     UiLibs(crate::features::ui_libs::Msg),
     ShaderPyramid(crate::features::pyramid_3d::Msg),
+    MusicWave(crate::features::music_wave::Msg),
     /// 窗口帧更新事件
     Tick(Instant),
 }
@@ -228,6 +232,7 @@ fn subscription(state: &App) -> Subscription<Message> {
     Subscription::batch(vec![
         window::frames().map(Message::Tick),
         window::frames().map(|t| Message::ShaderPyramid(crate::features::pyramid_3d::Msg::Tick(t))),
+        window::frames().map(|t| Message::MusicWave(crate::features::music_wave::Msg::Tick(t))),
     ])
 }
 

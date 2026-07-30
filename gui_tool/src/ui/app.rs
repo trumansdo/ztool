@@ -1,6 +1,7 @@
 //! 应用状态管理和左右两栏布局渲染
 
 use crate::features::json_fmt::JsonFormatter;
+use crate::features::music_wave::MusicWave;
 use crate::features::net_capture::PacketCapture;
 use crate::features::net_port_scan::NetScanner;
 use crate::features::pyramid_3d::Pyramid;
@@ -19,6 +20,7 @@ pub struct App {
     pub packet_capture: PacketCapture,
     pub ui_libs: UiLibs,
     pub pyramid: Pyramid,
+    pub music_wave: MusicWave,
     pub expanded: std::collections::HashSet<String>,
 }
 
@@ -61,6 +63,9 @@ impl App {
             Message::ShaderPyramid(m) => {
                 crate::features::pyramid_3d::update(&mut self.pyramid, m).map(Message::ShaderPyramid)
             }
+            Message::MusicWave(m) => {
+                crate::features::music_wave::update(&mut self.music_wave, m).map(Message::MusicWave)
+            }
             _ => Task::none(),
         }
     }
@@ -73,6 +78,7 @@ impl App {
             TreeItem::new("data", "数据工具").child(TreeItem::new("json_fmt", "JSON格式化")),
             TreeItem::new("ui", "组件库").child(TreeItem::new("ui_libs", "组件示例")),
             TreeItem::new("3d", "3D展示").child(TreeItem::new("pyramid_3d", "金字塔")),
+            TreeItem::new("music", "音乐波形").child(TreeItem::new("music_wave", "音阶波形")),
         ];
 
         let selected_id = match self.selected_tab {
@@ -81,6 +87,7 @@ impl App {
             Tab::NetCapture => "net_capture",
             Tab::UiLibs => "ui_libs",
             Tab::Pyramid3d => "pyramid_3d",
+            Tab::MusicWave => "music_wave",
         };
 
         let mut menu_col = column![].spacing(0);
@@ -111,6 +118,9 @@ impl App {
             }
             Tab::Pyramid3d => {
                 crate::features::pyramid_3d::view(&self.pyramid).map(Message::ShaderPyramid)
+            }
+            Tab::MusicWave => {
+                crate::features::music_wave::view(&self.music_wave).map(Message::MusicWave)
             }
         };
 

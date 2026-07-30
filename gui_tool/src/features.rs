@@ -24,6 +24,7 @@
 //! 这种组织方式遵循 Rust 的"一个模块一个关注点"原则。
 
 pub mod json_fmt;
+pub mod music_wave;
 pub mod net_capture;
 pub mod net_port_scan;
 pub mod theme;

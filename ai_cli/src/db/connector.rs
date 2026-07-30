@@ -26,8 +26,8 @@ pub trait DbConnection {
     /// 执行 SELECT 查询，返回结构化结果
     fn execute_query(&mut self, sql: &str, max_rows: usize) -> Result<QueryResult>;
 
-    /// 执行 INSERT / UPDATE / DELETE，返回影响行数
-    fn execute_dml(&mut self, sql: &str) -> Result<u64>;
+    /// 执行 INSERT / UPDATE / DELETE（统一事务 commit）
+    fn execute_dml(&mut self, sqls: &[String]) -> Result<u64>;
 
     /// 获取表结构（列 + 索引）
     fn get_table_struct(&mut self, owner: &str, table: &str) -> Result<TableInfo>;

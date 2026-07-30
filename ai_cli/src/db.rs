@@ -52,22 +52,21 @@ impl DatabaseManager {
     }
 
     /// 执行 SQL 查询
-    pub fn execute_query(&self, db_name: &str, sql: &str) -> Result<QueryResult> {
+    pub fn execute_query(&self, db_name: &str, sql: &str, limit: usize) -> Result<QueryResult> {
         let db_cfg = self.find_database(db_name)?;
         let connector = self.get_connector(&db_cfg.r#type)?;
 
-        let max_rows = self.config.db_tool.max_rows;
         let mut conn = connector.connect(db_cfg)?;
-        conn.execute_query(sql, max_rows)
+        conn.execute_query(sql, limit)
     }
 
-    /// 执行 INSERT / UPDATE / DELETE
-    pub fn execute_dml(&self, db_name: &str, sql: &str) -> Result<u64> {
+    /// 执行 INSERT / UPDATE / DELETE（统一事务 commit）
+    pub fn execute_dml(&self, db_name: &str, sqls: &[String]) -> Result<u64> {
         let db_cfg = self.find_database(db_name)?;
         let connector = self.get_connector(&db_cfg.r#type)?;
 
         let mut conn = connector.connect(db_cfg)?;
-        conn.execute_dml(sql)
+        conn.execute_dml(sqls)
     }
 
     /// 获取表结构

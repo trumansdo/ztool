@@ -117,104 +117,202 @@ impl DbConnection for OracleConnection {
         })
     }
 
-    fn execute_dml(&mut self, sql: &str) -> Result<u64> {
-        debug!(db = %self.db_name, %sql, "Executing DML");
+    fn execute_dml(&mut self, sqls: &[String]) -> Result<u64> {
+        if sqls.is_empty() {
+            return Err(AiCliError::General("sqls must not be empty".into()));
+        }
 
-        let stmt = self
-            .inner
-            .execute(sql, &[])
-            .map_err(|e| AiCliError::General(format!("DML execution failed: {}", e)))?;
+        info!(db = %self.db_name, count = sqls.len(), "Executing DML");
 
-        let rows_affected = stmt.row_count().unwrap_or(0);
-        info!(db = %self.db_name, rows_affected, "DML executed");
-        Ok(rows_affected)
+        let mut total: u64 = 0;
+        for (i, sql) in sqls.iter().enumerate() {
+            let stmt = self.inner.execute(sql, &[])
+                .map_err(|e| AiCliError::General(format!("DML [{}] failed: {}", i, e)))?;
+            total += stmt.row_count().unwrap_or(1);
+        }
+
+        // 统一提交事务
+        self.inner.commit()
+            .map_err(|e| AiCliError::General(format!("Commit failed: {}", e)))?;
+
+        info!(db = %self.db_name, total, "DML committed");
+        Ok(total)
     }
 
     fn get_table_struct(&mut self, owner: &str, table: &str) -> Result<TableInfo> {
         info!(db = %self.db_name, %owner, %table, "Getting table structure");
 
+        // owner 为空时使用 user_* 视图（当前用户），否则使用 all_* 视图
+        let use_current_user = owner.is_empty();
+
+        // 获取实际 owner（当前用户 schema 名）
+        let actual_owner = if use_current_user {
+            self.inner
+                .query("SELECT USER FROM DUAL", &[])
+                .ok()
+                .and_then(|rows| {
+                    rows.into_iter()
+                        .next()
+                        .and_then(|r| r.ok())
+                        .and_then(|row| row.get::<usize, String>(0).ok())
+                })
+                .unwrap_or_else(|| "UNKNOWN".to_string())
+        } else {
+            owner.to_string()
+        };
+
         // 表注释
-        let comment = self
-            .inner
-            .query(
-                "SELECT comments FROM all_tab_comments \
-                 WHERE lower(table_name) = lower(:1) AND lower(owner) = lower(:2)",
-                &[&table, &owner],
-            )
-            .ok()
-            .and_then(|rows| {
-                rows.into_iter()
-                    .next()
-                    .and_then(|r| r.ok())
-                    .and_then(|row| row.get::<usize, String>(0).ok())
-            });
+        let comment = if use_current_user {
+            self.inner
+                .query(
+                    "SELECT comments FROM user_tab_comments WHERE lower(table_name) = lower(:1)",
+                    &[&table],
+                )
+                .ok()
+                .and_then(|rows| {
+                    rows.into_iter()
+                        .next()
+                        .and_then(|r| r.ok())
+                        .and_then(|row| row.get::<usize, String>(0).ok())
+                })
+        } else {
+            self.inner
+                .query(
+                    "SELECT comments FROM all_tab_comments \
+                     WHERE lower(table_name) = lower(:1) AND lower(owner) = lower(:2)",
+                    &[&table, &owner],
+                )
+                .ok()
+                .and_then(|rows| {
+                    rows.into_iter()
+                        .next()
+                        .and_then(|r| r.ok())
+                        .and_then(|row| row.get::<usize, String>(0).ok())
+                })
+        };
 
         // 列信息
-        let columns = self
-            .inner
-            .query(
-                "SELECT a.column_id, a.column_name, cc.comments, \
-                        a.nullable, a.data_type, a.data_length, \
-                        a.data_precision, a.data_scale, a.data_default \
-                   FROM all_tab_columns a \
-                   JOIN all_tab_comments c \
-                     ON c.table_name = a.table_name AND c.owner = a.owner \
-                   LEFT JOIN all_col_comments cc \
-                     ON cc.table_name = c.table_name \
-                    AND cc.column_name = a.column_name \
-                    AND cc.owner = c.owner \
-                  WHERE lower(a.table_name) = lower(:1) \
-                    AND lower(a.owner) = lower(:2) \
-                  ORDER BY a.column_id",
-                &[&table, &owner],
-            )
-            .map_err(|e| AiCliError::General(format!("Column query failed: {}", e)))?
-            .into_iter()
-            .filter_map(|r| r.ok())
-            .map(|row| ColumnInfo {
-                column_id: row.get(0).unwrap_or(0u32),
-                column_name: Self::row_str(&row, 1),
-                comment: Self::opt_row_str(&row, 2),
-                nullable: Self::row_str(&row, 3),
-                data_type: Self::row_str(&row, 4),
-                data_length: row.get(5).unwrap_or(None),
-                data_precision: row.get(6).unwrap_or(None),
-                data_scale: row.get(7).unwrap_or(None),
-                data_default: Self::opt_row_str(&row, 8),
-            })
-            .collect();
+        let columns = if use_current_user {
+            self.inner
+                .query(
+                    "SELECT a.column_id, a.column_name, cc.comments, \
+                            a.nullable, a.data_type, a.data_length, \
+                            a.data_precision, a.data_scale, a.data_default \
+                       FROM user_tab_columns a \
+                       JOIN user_tab_comments c ON c.table_name = a.table_name \
+                       LEFT JOIN user_col_comments cc \
+                         ON cc.table_name = c.table_name \
+                        AND cc.column_name = a.column_name \
+                      WHERE lower(a.table_name) = lower(:1) \
+                      ORDER BY a.column_id",
+                    &[&table],
+                )
+                .map_err(|e| AiCliError::General(format!("Column query failed: {}", e)))?
+                .into_iter()
+                .filter_map(|r| r.ok())
+                .map(|row| ColumnInfo {
+                    column_id: row.get(0).unwrap_or(0u32),
+                    column_name: Self::row_str(&row, 1),
+                    comment: Self::opt_row_str(&row, 2),
+                    nullable: Self::row_str(&row, 3),
+                    data_type: Self::row_str(&row, 4),
+                    data_length: row.get(5).unwrap_or(None),
+                    data_precision: row.get(6).unwrap_or(None),
+                    data_scale: row.get(7).unwrap_or(None),
+                    data_default: Self::opt_row_str(&row, 8),
+                })
+                .collect()
+        } else {
+            self.inner
+                .query(
+                    "SELECT a.column_id, a.column_name, cc.comments, \
+                            a.nullable, a.data_type, a.data_length, \
+                            a.data_precision, a.data_scale, a.data_default \
+                       FROM all_tab_columns a \
+                       JOIN all_tab_comments c \
+                         ON c.table_name = a.table_name AND c.owner = a.owner \
+                       LEFT JOIN all_col_comments cc \
+                         ON cc.table_name = c.table_name \
+                        AND cc.column_name = a.column_name \
+                        AND cc.owner = c.owner \
+                      WHERE lower(a.table_name) = lower(:1) \
+                        AND lower(a.owner) = lower(:2) \
+                      ORDER BY a.column_id",
+                    &[&table, &owner],
+                )
+                .map_err(|e| AiCliError::General(format!("Column query failed: {}", e)))?
+                .into_iter()
+                .filter_map(|r| r.ok())
+                .map(|row| ColumnInfo {
+                    column_id: row.get(0).unwrap_or(0u32),
+                    column_name: Self::row_str(&row, 1),
+                    comment: Self::opt_row_str(&row, 2),
+                    nullable: Self::row_str(&row, 3),
+                    data_type: Self::row_str(&row, 4),
+                    data_length: row.get(5).unwrap_or(None),
+                    data_precision: row.get(6).unwrap_or(None),
+                    data_scale: row.get(7).unwrap_or(None),
+                    data_default: Self::opt_row_str(&row, 8),
+                })
+                .collect()
+        };
 
         // 索引信息
-        let indexes = self
-            .inner
-            .query(
-                "SELECT t.index_name, t.column_name, t.column_position, \
-                        i.index_type, i.uniqueness \
-                   FROM all_indexes i \
-                   JOIN all_ind_columns t \
-                     ON t.index_name = i.index_name \
-                    AND t.table_owner = i.table_owner \
-                    AND t.table_name = i.table_name \
-                  WHERE lower(i.table_owner) = lower(:1) \
-                    AND lower(t.table_name) = lower(:2) \
-                  ORDER BY t.index_name, t.column_position",
-                &[&owner, &table],
-            )
-            .map_err(|e| AiCliError::General(format!("Index query failed: {}", e)))?
-            .into_iter()
-            .filter_map(|r| r.ok())
-            .map(|row| IndexInfo {
-                index_name: Self::row_str(&row, 0),
-                column_name: Self::row_str(&row, 1),
-                column_position: row.get(2).unwrap_or(0u32),
-                index_type: Self::opt_row_str(&row, 3),
-                uniqueness: Self::opt_row_str(&row, 4),
-            })
-            .collect();
+        let indexes = if use_current_user {
+            self.inner
+                .query(
+                    "SELECT t.index_name, t.column_name, t.column_position, \
+                            i.index_type, i.uniqueness \
+                       FROM user_indexes i \
+                       JOIN user_ind_columns t \
+                         ON t.index_name = i.index_name \
+                        AND t.table_name = i.table_name \
+                      WHERE lower(t.table_name) = lower(:1) \
+                      ORDER BY t.index_name, t.column_position",
+                    &[&table],
+                )
+                .map_err(|e| AiCliError::General(format!("Index query failed: {}", e)))?
+                .into_iter()
+                .filter_map(|r| r.ok())
+                .map(|row| IndexInfo {
+                    index_name: Self::row_str(&row, 0),
+                    column_name: Self::row_str(&row, 1),
+                    column_position: row.get(2).unwrap_or(0u32),
+                    index_type: Self::opt_row_str(&row, 3),
+                    uniqueness: Self::opt_row_str(&row, 4),
+                })
+                .collect()
+        } else {
+            self.inner
+                .query(
+                    "SELECT t.index_name, t.column_name, t.column_position, \
+                            i.index_type, i.uniqueness \
+                       FROM all_indexes i \
+                       JOIN all_ind_columns t \
+                         ON t.index_name = i.index_name \
+                        AND t.table_owner = i.table_owner \
+                        AND t.table_name = i.table_name \
+                      WHERE lower(i.table_owner) = lower(:1) \
+                        AND lower(t.table_name) = lower(:2) \
+                      ORDER BY t.index_name, t.column_position",
+                    &[&owner, &table],
+                )
+                .map_err(|e| AiCliError::General(format!("Index query failed: {}", e)))?
+                .into_iter()
+                .filter_map(|r| r.ok())
+                .map(|row| IndexInfo {
+                    index_name: Self::row_str(&row, 0),
+                    column_name: Self::row_str(&row, 1),
+                    column_position: row.get(2).unwrap_or(0u32),
+                    index_type: Self::opt_row_str(&row, 3),
+                    uniqueness: Self::opt_row_str(&row, 4),
+                })
+                .collect()
+        };
 
         Ok(TableInfo {
             table_name: table.to_string(),
-            owner: owner.to_string(),
+            owner: actual_owner,
             comment,
             columns,
             indexes,

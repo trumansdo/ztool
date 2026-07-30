@@ -1,0 +1,81 @@
+[source.crates-io]
+replace-with = 'ustc'
+
+[source.ustc]
+registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+
+[registries.ustc]
+index = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+
+
+[source.cernet]
+registry = "sparse+https://mirrors.cernet.edu.cn/crates.io-index/"
+
+[registries.cernet]
+index = "sparse+https://mirrors.cernet.edu.cn/crates.io-index/"
+
+
+[source.hust]
+registry = "sparse+https://mirrors.hust.edu.cn/crates.io-index/"
+
+[registries.hust]
+index = "sparse+https://mirrors.hust.edu.cn/crates.io-index/"
+
+
+[source.sjtug]
+registry = "sparse+https://mirrors.sjtug.sjtu.edu.cn/crates.io-index/"
+
+[registries.sjtug]
+index = "sparse+https://mirrors.sjtug.sjtu.edu.cn/crates.io-index/"
+
+
+
+# ==================== 全局构建优化 ====================
+[build]
+
+# 并行任务数 — 20核极限
+jobs = 8
+
+# 全局 rustflags（官方推荐方式）
+rustflags = [
+    "-C", "target-cpu=native",          # 启用本地 CPU 指令集（AVX2/AVX-512 等）
+    "-C", "linker=rust-lld.exe"        # 强制所有情况都走 rust-lld
+]
+
+# ==================== Windows 平台：彻底启用 Rust 自带超快 lld ====================
+[target.x86_64-pc-windows-msvc]
+# Rust 1.74+ 自带的 rust-lld，比 link.exe 快 5～15 倍
+linker = "rust-lld.exe"
+
+# 如果你使用的是 GNU 工具链（stable-gnu），请改用下面这行
+[target.x86_64-pc-windows-gnu]
+linker = "lld.exe"
+
+# ==================== Debug 模式 ====================
+[profile.dev]
+opt-level = 1              # dev 模式下开启基础优化
+codegen-units = 16         # LLVM 全速并行
+incremental = true         # 增量编译
+debug = 1                  # 仅保留行号表
+
+# 对所有依赖降低并行度 — 16GB 内存防 OOM 最强手段
+[profile.dev.package."*"]
+codegen-units = 16
+incremental = false
+
+# 针对典型「内存杀手」crate 进一步压榨（按需保留）
+# [profile.dev.package.bevy]
+# codegen-units = 128
+
+
+# ==================== Release 模式 ====================
+[profile.release]
+codegen-units = 16         # 全速编译
+lto = "thin"               # thin LTO, 链接快且产物质量接近 fat
+incremental = false        # release 不用增量，追求最优产物
+
+# ==================== 其他实用细节 ====================
+
+[net]
+# 解决某些企业网络下 git 协议卡死问题
+git-fetch-with-cli = true

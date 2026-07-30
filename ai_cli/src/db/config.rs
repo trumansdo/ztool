@@ -24,8 +24,6 @@ pub struct BinConfig {
 pub struct DbToolConfig {
     /// 默认输出格式
     pub output_format: String,
-    /// 查询最大返回行数
-    pub max_rows: usize,
     /// 数据库连接列表
     pub databases: Vec<DbConnectionConfig>,
 }
@@ -34,7 +32,6 @@ impl Default for DbToolConfig {
     fn default() -> Self {
         Self {
             output_format: "json".into(),
-            max_rows: 200,
             databases: Vec::new(),
         }
     }
@@ -155,7 +152,6 @@ pub fn write_example_config(path: &Path) -> Result<()> {
 
 [db_tool]
 output_format = "json"
-max_rows = 200
 
 [[db_tool.databases]]
 name = "EXAMPLE_DEV"

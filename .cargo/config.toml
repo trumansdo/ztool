@@ -1,5 +1,2 @@
-[target.x86_64-pc-windows-msvc]
-linker = "rust-lld"
-
-[build]
-jobs = 4
+# 项目级配置 — 已全部上提至全局 $CARGO_HOME/config.toml
+# 如需覆盖全局设置，在此添加

@@ -8,7 +8,8 @@ use clap::Parser;
 use ai_cli::{OutputFormat, run_fetch};
 use ai_cli::db::config::BinConfig;
 use std::path::PathBuf;
-use tracing::{error, info};
+use anyhow::Result;
+use tracing::info;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -46,7 +47,7 @@ struct WebFetchCli {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(std::env::var("RUST_LOG").unwrap_or_else(|_| "ai_cli=warn".into()))
         .with_target(false)
@@ -66,8 +67,8 @@ async fn main() {
     }
 
     if url_count == 1 {
-        // 单 URL：保持原有行为
-        let result = run_fetch(
+        // 单 URL
+        run_fetch(
             &cli.urls[0],
             cli.spa,
             cli.output.as_deref(),
@@ -75,28 +76,17 @@ async fn main() {
             cli.browser.as_deref(),
             cli.timeout,
             proxy_url.as_deref(),
-        ).await;
-
-        if let Err(e) = result {
-            error!(%e, "Fetch failed");
-            eprintln!("\x1b[31merror:\x1b[0m {}", e);
-            std::process::exit(1);
-        }
+        ).await?;
     } else {
         // 多 URL：并发获取
         info!(count = url_count, "Starting concurrent fetch");
 
-        // 如果指定了 output，确保是目录
         if let Some(ref out) = cli.output {
             if out.exists() && !out.is_dir() {
-                eprintln!("\x1b[31merror:\x1b[0m multi-URL mode requires --output to be a directory");
-                std::process::exit(1);
+                anyhow::bail!("multi-URL mode requires --output to be a directory");
             }
             if !out.exists() {
-                std::fs::create_dir_all(out).unwrap_or_else(|e| {
-                    eprintln!("\x1b[31merror:\x1b[0m failed to create output directory: {}", e);
-                    std::process::exit(1);
-                });
+                std::fs::create_dir_all(out)?;
             }
         }
 
@@ -129,32 +119,24 @@ async fn main() {
             })
         }).collect();
 
-        let mut results: Vec<(usize, String, Result<(), ai_cli::error::AiCliError>)> = Vec::new();
+        let mut results: Vec<(usize, String, std::result::Result<(), ai_cli::error::AiCliError>)> = Vec::new();
         for handle in handles {
             match handle.await {
                 Ok(tuple) => results.push(tuple),
                 Err(e) => {
-                    error!(%e, "Join error");
+                    tracing::error!(%e, "Join error");
                     eprintln!("\x1b[31merror:\x1b[0m task panicked: {}", e);
                 }
             }
         }
 
-        // 按原始顺序排序
         results.sort_by_key(|(i, _, _)| *i);
 
-        // 汇总报告
-        let success_count = results.iter().filter(|(_, _, r)| r.is_ok()).count();
-        let fail_count = results.len() - success_count;
-
-        if cli.output.is_none() {
-            // stdout 模式：输出到 stdout 的结果已在 run_fetch 中打印
-            // 这里只输出汇总
-        }
+        let fail_count = results.iter().filter(|(_, _, r)| r.is_err()).count();
 
         eprintln!(
             "\x1b[90m── {}/{} succeeded{}──\x1b[0m",
-            success_count,
+            results.len() - fail_count,
             results.len(),
             if fail_count > 0 { format!(", {} failed", fail_count) } else { String::new() }
         );
@@ -166,9 +148,11 @@ async fn main() {
         }
 
         if fail_count > 0 {
-            std::process::exit(1);
+            anyhow::bail!("{} fetch(es) failed", fail_count);
         }
     }
+
+    Ok(())
 }
 
 /// 将 URL 转换为安全的文件名
