@@ -21,6 +21,7 @@ pub enum ComponentTab {
     Toast,
     ColorPicker,
     DatePicker,
+    Menu,
 }
 
 #[derive(Debug, Clone)]
@@ -31,6 +32,8 @@ pub enum Msg {
     NumberChanged(i32),
     ToastShow(ToastLevel, String, ToastPosition),
     CloseToast(usize),
+    /// 菜单项被点击（携带菜单项文本）
+    MenuClicked(String),
 }
 
 #[derive(Default)]
@@ -72,6 +75,11 @@ pub fn update(libs: &mut UiLibs, msg: Msg) -> iced::Task<Msg> {
         }
         Msg::CloseToast(index) => {
             libs.toasts.remove(index);
+        }
+        Msg::MenuClicked(label) => {
+            // 菜单点击反馈：记录次数 + 弹出 Toast 提示
+            libs.click_count += 1;
+            libs.push_toast(ToastLevel::Info, format!("菜单项: {} 被点击", label), ToastPosition::BottomRight);
         }
     }
     iced::Task::none()

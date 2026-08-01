@@ -166,8 +166,6 @@ impl Tab {
 /// 携带一个 `json_fmt::Msg` 类型的值。
 #[derive(Debug, Clone)]
 pub enum Message {
-    /// 切换侧边栏分类的展开/折叠
-    ToggleCategory(String),
     /// 切换到指定标签页
     TabSelected(Tab),
     /// JSON 格式化模块消息（格式化输入、复制结果等）

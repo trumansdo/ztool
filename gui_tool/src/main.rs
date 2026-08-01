@@ -51,7 +51,7 @@
 //!             │         └── 各feature::update()
 //!             └── view() -> Element    // 第5层 - 渲染 UI
 //!                  └── App::view()     // 第4层 - 组装左右布局
-//!                       ├── tree_menu  // 第3层 - 左侧导航菜单
+//!                       ├── menu_bar  // 第3层 - 顶部菜单栏
 //!                       └── feature::view() // 第2层 - 右侧功能面板
 //!                            └── theme::font/size/padding // 第0层
 //! ```
@@ -80,7 +80,7 @@ mod features;
 /// 包含应用界面的结构和布局：
 /// - `app`: 应用状态管理 (持有所选标签页、各功能模块状态)
 /// - `menu`: 顶部下拉菜单逻辑
-/// - `widgets`: 自定义 UI 组件 (树形菜单、Toast、叠加层、菜单栏)
+/// - `widgets`: 自定义 UI 组件 (菜单栏、Toast、叠加层)
 mod ui;
 
 // `use` 语句: 将外部类型/函数引入当前作用域

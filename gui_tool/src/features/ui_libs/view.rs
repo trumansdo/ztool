@@ -4,8 +4,9 @@
 
 use crate::features::theme;
 use crate::features::ui_libs::update::ComponentTab;
-use iced::widget::{button, column, container, row, text, toggler, scrollable};
+use iced::widget::{button, column, container, row, text, toggler};
 use iced::Element;
+use iced_aw::widget::Wrap;
 
 use super::Msg;
 use super::UiLibs;
@@ -14,7 +15,8 @@ use crate::ui::widgets::Toaster;
 
 /// 主视图：渲染 sub-tab 切换栏 + 对应的组件展示内容 + Toast
 pub fn view(libs: &UiLibs) -> Element<'_, Msg> {
-    let tabs = row![
+    // 快捷按钮行：Wrap 自动换行容器，无滚动条，超出宽度自动折行（不裁剪不溢出）
+    let tabs = Wrap::with_elements(vec![
         tab_button("Badge", ComponentTab::Badge, libs.selected_tab),
         tab_button("Card", ComponentTab::Card, libs.selected_tab),
         tab_button("Button", ComponentTab::Button, libs.selected_tab),
@@ -28,8 +30,9 @@ pub fn view(libs: &UiLibs) -> Element<'_, Msg> {
         tab_button("Toast", ComponentTab::Toast, libs.selected_tab),
         tab_button("Color", ComponentTab::ColorPicker, libs.selected_tab),
         tab_button("Date", ComponentTab::DatePicker, libs.selected_tab),
-    ]
-    .spacing(theme::size(0.3).0 as u32);
+        tab_button("Menu", ComponentTab::Menu, libs.selected_tab),
+    ])
+    .spacing(theme::size(0.3).0);
 
     let content = match libs.selected_tab {
         ComponentTab::Badge => view_badge(),
@@ -45,13 +48,15 @@ pub fn view(libs: &UiLibs) -> Element<'_, Msg> {
         ComponentTab::Toast => view_toast(),
         ComponentTab::ColorPicker => view_color_picker(libs),
         ComponentTab::DatePicker => view_date_picker(),
+        ComponentTab::Menu => view_menu(libs),
     };
 
     let content = container(
         column![
             text("iced UI 组件示例").size(theme::font(1.2)),
             text("").size(theme::font(0.5)),
-            scrollable(row![tabs]).horizontal(),
+            // 快捷按钮行（Wrap 自动换行，无滚动条）
+            tabs,
             text("").size(theme::font(0.5)),
             content,
         ]
@@ -371,8 +376,7 @@ fn view_color_picker(libs: &UiLibs) -> Element<'static, Msg> {
     .into()
 }
 
-fn view_date_picker() -> Element<'static, Msg> {
-    use iced_aw::date_picker::Date;
+fn view_date_picker() -> Element<'static, Msg> {    use iced_aw::date_picker::Date;
 
     let today = Date::today();
     let date_str = format!("{}/{}/{}", today.year, today.month, today.day);
@@ -391,6 +395,88 @@ fn view_date_picker() -> Element<'static, Msg> {
         text("").size(theme::font(0.3)),
         text("(需要状态管理，实际使用需要配合 show_picker 和 date 状态)")
             .size(theme::font(0.7)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+/// Menu 菜单栏组件示例
+///
+/// 展示基于 libcosmic 菜单架构实现的自定义 `MenuBar`：
+/// - 根菜单：文件 / 编辑 / 帮助
+/// - 多级子菜单：编辑 → 查找与替换（二级菜单）
+/// - 分隔符、禁用项、图标
+/// - 点击菜单项触发 `Msg::MenuClicked` → Toast 反馈 + 计数
+fn view_menu(libs: &UiLibs) -> Element<'static, Msg> {
+    use crate::ui::widgets::menu::{MenuBar, MenuTree};
+    use iced::{Border, Color};
+
+    // 构建静态菜单树（数据模型层）
+    let menu_bar = MenuBar::new(vec![
+        MenuTree::folder(
+            "文件",
+            vec![
+                MenuTree::item("新建文件", Msg::MenuClicked("新建文件".to_string())).icon("📄"),
+                MenuTree::item("打开文件", Msg::MenuClicked("打开文件".to_string())).icon("📂"),
+                MenuTree::separator(),
+                MenuTree::item("保存", Msg::MenuClicked("保存".to_string()))
+                    .icon("💾")
+                    .enabled(false),
+                MenuTree::separator(),
+                MenuTree::item("退出", Msg::MenuClicked("退出".to_string())),
+            ],
+        ),
+        MenuTree::folder(
+            "编辑",
+            vec![
+                MenuTree::item("撤销", Msg::MenuClicked("撤销".to_string())),
+                MenuTree::item("重做", Msg::MenuClicked("重做".to_string())),
+                MenuTree::separator(),
+                // 二级子菜单（递归层级）
+                MenuTree::folder(
+                    "查找与替换",
+                    vec![
+                        MenuTree::item("查找", Msg::MenuClicked("查找".to_string())),
+                        MenuTree::item("替换", Msg::MenuClicked("替换".to_string())),
+                    ],
+                ),
+            ],
+        ),
+        MenuTree::folder(
+            "帮助",
+            vec![
+                MenuTree::item("关于", Msg::MenuClicked("关于".to_string())).icon("ℹ️"),
+            ],
+        )
+        .icon("❓"),
+    ]);
+
+    // 菜单栏容器（深色底 + 边框，模拟经典菜单栏）
+    let bar = container(menu_bar)
+        .width(iced::Length::Fill)
+        .padding([4, 8])
+        .style(|_: &iced::Theme| container::Style {
+            background: Some(iced::Background::Color(Color::from_rgb8(25, 25, 40))),
+            border: Border {
+                color: Color::from_rgb8(60, 60, 80),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        });
+
+    column![
+        text("Menu 菜单栏组件（libcosmic 架构）").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("数据模型层 + 状态机 FSM + Overlay 递归渲染三层解耦").size(theme::font(0.7)),
+        text("").size(theme::font(0.3)),
+        bar,
+        text("").size(theme::font(0.3)),
+        text("交互：hover 根菜单展开下拉，hover 子项展开二级菜单，点击菜单项触发消息").size(theme::font(0.8)),
+        text("").size(theme::font(0.3)),
+        text(format!("菜单交互次数: {}", libs.click_count)).size(theme::font(0.9)),
+        text("").size(theme::font(0.3)),
+        text("提示：点击菜单外部区域或按 ESC 可关闭菜单").size(theme::font(0.7)),
     ]
     .spacing(theme::size(0.3).0 as u32)
     .into()

@@ -1,4 +1,4 @@
-//! 应用状态管理和左右两栏布局渲染
+//! 应用状态管理和顶部菜单栏 + 内容区布局渲染
 
 use crate::features::json_fmt::JsonFormatter;
 use crate::features::music_wave::MusicWave;
@@ -6,8 +6,8 @@ use crate::features::net_capture::PacketCapture;
 use crate::features::net_port_scan::NetScanner;
 use crate::features::pyramid_3d::Pyramid;
 use crate::features::ui_libs::UiLibs;
-use crate::ui::widgets::tree_menu::{TreeItem, render_tree_item};
-use iced::widget::{column, container, row};
+use crate::ui::widgets::menu::{MenuBar, MenuTree};
+use iced::widget::{column, container};
 use iced::{Color, Element, Length, Task};
 
 use super::{Message, Tab};
@@ -21,31 +21,15 @@ pub struct App {
     pub ui_libs: UiLibs,
     pub pyramid: Pyramid,
     pub music_wave: MusicWave,
-    pub expanded: std::collections::HashSet<String>,
 }
 
 impl App {
     pub fn new() -> Self {
-        let mut expanded = std::collections::HashSet::new();
-        expanded.insert("net".to_string());
-        expanded.insert("data".to_string());
-        expanded.insert("ui".to_string());
-        Self {
-            expanded,
-            ..Self::default()
-        }
+        Self::default()
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
-            Message::ToggleCategory(id) => {
-                if self.expanded.contains(&id) {
-                    self.expanded.remove(&id);
-                } else {
-                    self.expanded.insert(id);
-                }
-                Task::none()
-            }
             Message::TabSelected(tab) => {
                 self.selected_tab = tab;
                 Task::none()
@@ -71,33 +55,37 @@ impl App {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let menu_tree = vec![
-            TreeItem::new("net", "网络工具")
-                .child(TreeItem::new("net_port_scan", "端口扫描"))
-                .child(TreeItem::new("net_capture", "网络抓包")),
-            TreeItem::new("data", "数据工具").child(TreeItem::new("json_fmt", "JSON格式化")),
-            TreeItem::new("ui", "组件库").child(TreeItem::new("ui_libs", "组件示例")),
-            TreeItem::new("3d", "3D展示").child(TreeItem::new("pyramid_3d", "金字塔")),
-            TreeItem::new("music", "音乐波形").child(TreeItem::new("music_wave", "音阶波形")),
-        ];
+        // 顶部菜单栏（Windows 经典菜单风格，替代原左侧树形导航）
+        // 根菜单：功能分类；下拉菜单：具体功能页面
+        let menu_bar = MenuBar::new(vec![
+            MenuTree::folder(
+                "网络工具",
+                vec![
+                    MenuTree::item("端口扫描", Message::TabSelected(Tab::NetPortScan)),
+                    MenuTree::item("网络抓包", Message::TabSelected(Tab::NetCapture)),
+                ],
+            ),
+            MenuTree::folder(
+                "数据工具",
+                vec![MenuTree::item("JSON格式化", Message::TabSelected(Tab::JsonFmt))],
+            ),
+            MenuTree::folder(
+                "组件库",
+                vec![MenuTree::item("组件示例", Message::TabSelected(Tab::UiLibs))],
+            ),
+            MenuTree::folder(
+                "3D展示",
+                vec![MenuTree::item("金字塔", Message::TabSelected(Tab::Pyramid3d))],
+            ),
+            MenuTree::folder(
+                "音乐波形",
+                vec![MenuTree::item("音阶波形", Message::TabSelected(Tab::MusicWave))],
+            ),
+        ]);
 
-        let selected_id = match self.selected_tab {
-            Tab::JsonFmt => "json_fmt",
-            Tab::NetPortScan => "net_port_scan",
-            Tab::NetCapture => "net_capture",
-            Tab::UiLibs => "ui_libs",
-            Tab::Pyramid3d => "pyramid_3d",
-            Tab::MusicWave => "music_wave",
-        };
-
-        let mut menu_col = column![].spacing(0);
-        for item in &menu_tree {
-            menu_col = menu_col.push(render_tree_item(item, 0, &self.expanded, selected_id));
-        }
-
-        let menu_panel = container(menu_col)
-            .width(Length::Fixed(160.0))
-            .height(Length::Fill)
+        // 顶部菜单栏容器（深色底，撑满整行宽度）
+        let menu_panel = container(menu_bar)
+            .width(Length::Fill)
             .style(|_| iced::widget::container::Style {
                 background: Some(iced::Background::Color(Color::from_rgb8(25, 25, 40))),
                 ..Default::default()
@@ -128,7 +116,8 @@ impl App {
             .width(Length::Fill)
             .height(Length::Fill);
 
-        row![menu_panel, content_panel]
+        // 布局：顶部菜单栏 + 内容区（垂直排列）
+        column![menu_panel, content_panel]
             .spacing(0)
             .width(Length::Fill)
             .height(Length::Fill)
