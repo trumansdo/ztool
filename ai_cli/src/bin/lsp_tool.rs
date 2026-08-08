@@ -129,14 +129,19 @@ enum Sub {
 }
 
 fn main() {
-    if let Err(e) = run() {
-        eprintln!("[error] {}", e);
+    let cli = Cli::parse();
+    if let Err(e) = run(&cli) {
+        // 输出优化: --json 模式错误结构化到 stdout(AI 可直接解析), 否则 stderr
+        if cli.json {
+            println!("{}", serde_json::json!({ "error": e.to_string() }));
+        } else {
+            eprintln!("[error] {}", e);
+        }
         std::process::exit(1);
     }
 }
 
-fn run() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+fn run(cli: &Cli) -> anyhow::Result<()> {
     let config = load_settings(cli.config.as_deref());
 
     match &cli.cmd {

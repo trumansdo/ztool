@@ -58,10 +58,12 @@ pub fn symbol_kind_name(kind: u64) -> &'static str {
     }
 }
 
-/// hover 内容格式化（MarkupContent / string / 数组）
+/// hover 内容格式化（对 AI 精确: 签名与文档分离, 去掉 markdown 噪音）
+/// jdtls 返回 MarkupContent(markdown), 典型结构: ```java\n<签名>\n``` + 文档段落
+/// 输出: `签名` + 分隔线 + `文档`(首行简述), 让大模型直接可读
 pub fn format_hover(v: &Value) -> String {
     let contents = v.get("contents");
-    let mut out = String::new();
+    let mut raw = String::new();
     fn append(c: &Value, out: &mut String) {
         match c {
             Value::String(s) => out.push_str(s),
@@ -79,14 +81,51 @@ pub fn format_hover(v: &Value) -> String {
             _ => out.push_str(&c.to_string()),
         }
     }
-    append(&contents.unwrap_or(&Value::Null), &mut out);
+    append(&contents.unwrap_or(&Value::Null), &mut raw);
+
+    // 解析 markdown: 提取首个代码块作为签名, 其余作为文档
+    let mut signature = String::new();
+    let mut doc = String::new();
+    let mut in_code = false;
+    for line in raw.lines() {
+        if line.starts_with("```") {
+            in_code = !in_code;
+            continue;
+        }
+        if in_code {
+            if signature.is_empty() {
+                signature.push_str(line.trim());
+            } else {
+                signature.push(' ');
+                signature.push_str(line.trim());
+            }
+        } else if !line.trim().is_empty() {
+            doc.push_str(line.trim());
+            doc.push(' ');
+        }
+    }
+    let sig = signature.trim();
+    let docs = doc.trim();
+    let mut out = String::new();
+    if !sig.is_empty() {
+        out.push_str(sig);
+        if !docs.is_empty() {
+            out.push_str("\n---\n");
+            out.push_str(docs);
+        }
+    } else if !docs.is_empty() {
+        out.push_str(docs);
+    }
     out
 }
 
-/// Location/LocationLink 格式化: `uri:line:char [sel=...]`
+/// Location/LocationLink 格式化: `路径:line:col [sel=...]`
+/// 优化: 去掉 file:/// 前缀(省 token, AI 直接可读路径); 行号 1-based
 pub fn format_locations(v: &Value) -> String {
     fn loc_str(l: &Value) -> String {
         let uri = l.get("uri").and_then(Value::as_str).unwrap_or("?");
+        // 统一路径: file:///D:/x -> D:/x; 保留 Windows 盘符可读性
+        let path = uri.strip_prefix("file:///").unwrap_or(uri).to_string();
         let (rng, sel) = match l.get("targetRange") {
             Some(tr) => (tr, l.get("targetSelectionRange")),
             None => (l.get("range").unwrap_or(&Value::Null), None),
@@ -110,7 +149,7 @@ pub fn format_locations(v: &Value) -> String {
                 )
             })
             .unwrap_or_default();
-        format!("{}:{}:{}{}", uri, sl + 1, sc + 1, sel_info)
+        format!("{}:{}:{}{}", path, sl + 1, sc + 1, sel_info)
     }
     match v {
         Value::Array(a) => a.iter().map(loc_str).collect::<Vec<_>>().join("\n"),
