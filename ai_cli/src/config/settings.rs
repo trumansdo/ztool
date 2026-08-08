@@ -5,6 +5,7 @@
 
 use crate::error::{AiCliError, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// 全局配置
@@ -17,6 +18,44 @@ pub struct Settings {
     pub openai: Option<ProviderConfig>,
     pub anthropic: Option<ProviderConfig>,
     pub ollama: Option<OllamaConfig>,
+    /// LSP 语言服务器配置段 ([lsp] 父级: 全局项 + 每种语言子级 [lsp.<server_id>])
+    pub lsp: LspSection,
+}
+
+/// LSP 配置段
+/// TOML 结构:
+/// ```toml
+/// [lsp]
+/// data_root = "D:/code_space/jdtls-ws"   # workspace 根(子目录按 root 路径 sha1 隔离)
+/// open_delay_ms = 200                    # didOpen 后缓冲(默认 200ms)
+/// [lsp.jdtls]                            # 语言子级(flatten 到 server map)
+/// command = [...]
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LspSection {
+    /// jdtls workspace 根目录; 子目录 = sha1(root 绝对路径), 自动按项目隔离
+    #[serde(default)]
+    pub data_root: Option<String>,
+    /// didOpen 通知后等待缓冲, 让服务器完成文档处理再查询 (默认 200ms)
+    #[serde(default)]
+    pub open_delay_ms: Option<u64>,
+    /// 各语言服务器配置 (TOML 的 [lsp.<id>] 子表, 通过 flatten 收集)
+    #[serde(flatten)]
+    pub server: HashMap<String, LspServerConfig>,
+}
+
+/// 单个语言服务器的 LSP 配置 (对应 TOML: [lsp.jdtls] 等)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LspServerConfig {
+    /// 覆盖服务器启动命令 (如 ["python", "D:\\...\\jdtls.py"] 或完整 java 命令)
+    #[serde(default)]
+    pub command: Option<Vec<String>>,
+    /// 禁用该服务器
+    #[serde(default)]
+    pub disabled: Option<bool>,
+    /// 方案 B: 显式指定 Maven user settings.xml (注入 -Djava.configuration.maven.userSettings)
+    #[serde(default)]
+    pub maven_settings: Option<String>,
 }
 
 impl Default for Settings {
@@ -26,6 +65,7 @@ impl Default for Settings {
             openai: Some(ProviderConfig::default()),
             anthropic: None,
             ollama: Some(OllamaConfig::default()),
+            lsp: LspSection::default(),
         }
     }
 }
@@ -116,13 +156,15 @@ fn default_ollama_model() -> String {
 }
 
 impl Settings {
-    /// 获取配置文件路径: `~/.config/ai_cli/config.toml`
+    /// 获取配置文件路径: 默认与可执行程序同目录 (config.toml)
+    /// 约定(用户指定): 配置只有两种来源 —— ① exe 同级 config.toml ② --config 显式指定,
+    ///                 不查系统配置目录, 保证便携可分发
     pub fn config_path() -> Result<PathBuf> {
-        let base = dirs::config_dir()
-            .ok_or_else(|| AiCliError::Config("Cannot determine config directory".into()))?;
-        let dir = base.join("ai_cli");
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| AiCliError::Config(format!("Cannot create config dir: {}", e)))?;
+        let exe = std::env::current_exe()
+            .map_err(|e| AiCliError::Config(format!("Cannot determine exe path: {}", e)))?;
+        let dir = exe
+            .parent()
+            .ok_or_else(|| AiCliError::Config("Cannot determine exe directory".into()))?;
         Ok(dir.join("config.toml"))
     }
 

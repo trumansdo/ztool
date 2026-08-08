@@ -29,6 +29,7 @@ pub mod output;
 pub mod error;
 pub mod db;
 pub mod excel;
+pub mod lsp;
 
 // 重新导出高频类型，方便 CLI 层使用
 pub use output::format::OutputFormat;
