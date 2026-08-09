@@ -8,9 +8,9 @@ use crate::lsp::servers::ServerDef;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::{Duration, SystemTime};
 
 /// 文件路径 → file:// URI（Windows 盘符转 file:///D:/...）
@@ -33,6 +33,7 @@ pub struct LspClient {
     child: Child,
     stdin: ChildStdin,
     reader: BufReader<ChildStdout>,
+    stderr: Option<BufReader<ChildStderr>>,
     next_id: u32,
     root_uri: String,
     language_id: String,
@@ -52,10 +53,8 @@ impl LspClient {
             .current_dir(root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            // 坑: stderr 管道若无人消费会积压(默认~64KB高水位)后服务器写阻塞卡死
-            //     (jdtls 日志量大时实测卡死 initialize), 故直接丢弃服务器内部日志;
-            //     服务器错误经 LSP 协议层返回, 不依赖 stderr
-            .stderr(Stdio::null());
+            // stderr 保留管道以便诊断(EOF/崩溃时读出错误); 有后台消费者时不会积压
+            .stderr(Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| {
             anyhow::anyhow!(
                 "启动 LSP 服务器 '{}' 失败: {} (命令: {}，安装提示: {})",
@@ -73,10 +72,12 @@ impl LspClient {
             .stdout
             .take()
             .ok_or_else(|| anyhow::anyhow!("无法获取服务器 stdout"))?;
+        let stderr = child.stderr.take().map(BufReader::new);
         let mut client = LspClient {
             child,
             stdin,
             reader: BufReader::new(stdout),
+            stderr,
             next_id: 0,
             root_uri: path_to_uri(root),
             language_id: server.language_id.clone(),
@@ -120,7 +121,24 @@ impl LspClient {
             &json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}),
         )?;
         loop {
-            let msg = read_msg(&mut self.reader)?;
+            let msg = read_msg(&mut self.reader).map_err(|e| {
+                let exit = self.child.try_wait().ok().flatten();
+                // 读 stderr 尾部用于诊断 (非阻塞尽力而为)
+                let mut err_tail = String::new();
+                if let Some(s) = self.stderr.as_mut() {
+                    let mut tmp = [0u8; 2048];
+                    loop {
+                        match s.read(&mut tmp) {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => err_tail.push_str(&String::from_utf8_lossy(&tmp[..n])),
+                        }
+                    }
+                }
+                anyhow::anyhow!(
+                    "{} 阶段读响应失败: {} (进程退出: {:?}, stderr: {})",
+                    method, e, exit, err_tail.chars().take(300).collect::<String>()
+                )
+            })?;
             // 坑: 不能像 subprocess.communicate() 那样等待进程退出——LSP 服务器响应后
             //     会持续存活等待后续请求, communicate() 会一直阻塞被误判为"卡死/超时"
             //     (曾因此把 3 秒能响应的 jdtls 误判为 220s 无响应)

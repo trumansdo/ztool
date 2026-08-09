@@ -78,7 +78,8 @@ pub fn format_hover(v: &Value) -> String {
                     out.push('\n');
                 }
             }
-            _ => out.push_str(&c.to_string()),
+            // Null/数字等无文本内容, 静默跳过 (避免把 null 当作 hover 文本输出)
+            _ => {}
         }
     }
     append(&contents.unwrap_or(&Value::Null), &mut raw);
@@ -123,7 +124,12 @@ pub fn format_hover(v: &Value) -> String {
 /// 优化: 去掉 file:/// 前缀(省 token, AI 直接可读路径); 行号 1-based
 pub fn format_locations(v: &Value) -> String {
     fn loc_str(l: &Value) -> String {
-        let uri = l.get("uri").and_then(Value::as_str).unwrap_or("?");
+        // Location 用 uri, LocationLink 用 targetUri
+        let uri = l
+            .get("uri")
+            .or_else(|| l.get("targetUri"))
+            .and_then(Value::as_str)
+            .unwrap_or("?");
         // 统一路径: file:///D:/x -> D:/x; 保留 Windows 盘符可读性
         let path = uri.strip_prefix("file:///").unwrap_or(uri).to_string();
         let (rng, sel) = match l.get("targetRange") {

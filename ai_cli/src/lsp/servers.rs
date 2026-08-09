@@ -48,6 +48,13 @@ pub fn builtin_servers() -> Vec<ServerDef> {
             install_hint: "Install Eclipse JDT Language Server (jdtls). Requires JDK 17+.".into(),
         },
         ServerDef {
+            id: "rust-analyzer".into(),
+            command: vec!["rust-analyzer".into()],
+            extensions: vec![".rs".into()],
+            language_id: "rust".into(),
+            install_hint: "rustup component add rust-analyzer".into(),
+        },
+        ServerDef {
             id: "kotlin-language-server".into(),
             command: vec!["kotlin-language-server".into()],
             extensions: vec![".kt".into(), ".kts".into()],
@@ -167,6 +174,13 @@ pub fn apply_data_dir(
     config: &Settings,
 ) -> ServerDef {
     if server.command.iter().any(|a| a == "-data") {
+        return server;
+    }
+    // 坑: -data 是 jdtls(equinox launcher) 专用 workspace 参数,
+    //     注入到 rust-analyzer/clangd 等其它服务器会报 "unexpected flag: -data" 直接罢工
+    //     (实测: rust-analyzer 1.94.1 收到未知参数后 stdout 关闭, 表现为 EOF)
+    //     故仅对含 -jar 的命令(equinox launcher)注入
+    if !server.command.iter().any(|a| a == "-jar") {
         return server;
     }
     let data_root = cli_data_root
