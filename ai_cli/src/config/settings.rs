@@ -31,17 +31,32 @@ pub struct Settings {
 /// [lsp.jdtls]                            # 语言子级(flatten 到 server map)
 /// command = [...]
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LspSection {
     /// jdtls workspace 根目录; 子目录 = sha1(root 绝对路径), 自动按项目隔离
     #[serde(default)]
     pub data_root: Option<String>,
     /// didOpen 通知后等待缓冲, 让服务器完成文档处理再查询 (默认 200ms)
-    #[serde(default)]
-    pub open_delay_ms: Option<u64>,
+    #[serde(default = "default_open_delay_ms")]
+    pub open_delay_ms: u64,
     /// 各语言服务器配置 (TOML 的 [lsp.<id>] 子表, 通过 flatten 收集)
     #[serde(flatten)]
     pub server: HashMap<String, LspServerConfig>,
+}
+
+/// open_delay_ms 配置默认值
+fn default_open_delay_ms() -> u64 {
+    200
+}
+
+impl Default for LspSection {
+    fn default() -> Self {
+        Self {
+            data_root: None,
+            open_delay_ms: default_open_delay_ms(),
+            server: HashMap::new(),
+        }
+    }
 }
 
 /// 单个语言服务器的 LSP 配置 (对应 TOML: [lsp.jdtls] 等)
