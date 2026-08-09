@@ -26,7 +26,7 @@ pub struct Settings {
 /// TOML 结构:
 /// ```toml
 /// [lsp]
-/// data_root = "D:/code_space/jdtls-ws"   # workspace 根(子目录按 root 路径 sha1 隔离)
+/// data_dir = "D:/code_space/jdtls-ws"   # workspace 根(子目录按 root 路径 sha1 隔离)
 /// open_delay_ms = 200                    # didOpen 后缓冲(默认 200ms)
 /// [lsp.jdtls]                            # 语言子级(flatten 到 server map)
 /// command = [...]
@@ -35,8 +35,11 @@ pub struct Settings {
 pub struct LspSection {
     /// jdtls workspace 根目录; 子目录 = sha1(root 绝对路径), 自动按项目隔离
     #[serde(default)]
-    pub data_root: Option<String>,
+    pub data_dir: Option<String>,
     /// didOpen 通知后等待缓冲, 让服务器完成文档处理再查询 (默认 200ms)
+    /// 坑: rust-analyzer 首次语义分析需 ~15s(比 jdtls 慢得多),
+    ///     200ms 缓冲下 hover/definition 会返回 null(非错误, 模型会误判"无符号")
+    ///     Rust 场景请调大: CLI --open-delay-ms 15000 或配置 open_delay_ms
     #[serde(default = "default_open_delay_ms")]
     pub open_delay_ms: u64,
     /// 各语言服务器配置 (TOML 的 [lsp.<id>] 子表, 通过 flatten 收集)
@@ -52,7 +55,7 @@ fn default_open_delay_ms() -> u64 {
 impl Default for LspSection {
     fn default() -> Self {
         Self {
-            data_root: None,
+            data_dir: None,
             open_delay_ms: default_open_delay_ms(),
             server: HashMap::new(),
         }

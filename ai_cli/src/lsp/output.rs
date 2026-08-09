@@ -124,7 +124,8 @@ pub fn format_hover(v: &Value) -> String {
 /// 优化: 去掉 file:/// 前缀(省 token, AI 直接可读路径); 行号 1-based
 pub fn format_locations(v: &Value) -> String {
     fn loc_str(l: &Value) -> String {
-        // Location 用 uri, LocationLink 用 targetUri
+        // 坑: Location 用 uri 字段, LocationLink 用 targetUri 字段(jdtls/rust-analyzer 均有此差异),
+        //     只取 uri 会得到空导致输出 "?" 无法定位
         let uri = l
             .get("uri")
             .or_else(|| l.get("targetUri"))

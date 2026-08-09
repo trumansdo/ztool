@@ -9,7 +9,7 @@
 //! lsp_tool completion <file> --line N --char N
 //! lsp_tool test <file>
 //!
-//! 全局: --json --server <id> --command <cmd> --maven-settings <path> --config <path> --root <dir>
+//! 全局: --json --server <id> --command <cmd> --maven-settings <path> --config <path> --project-dir <dir>
 //! ```
 //!
 //! # 配置（统一走 ai_cli::config::Settings，~/.config/ai_cli/config.toml）
@@ -74,15 +74,15 @@ struct Cli {
     /// didOpen 后缓冲等待 ms (覆盖配置 open_delay_ms, 默认取配置/200)
     #[arg(long)]
     open_delay_ms: Option<u64>,
-    /// workspace 根目录 (覆盖配置 data_root, 子目录仍按 sha1(root) 隔离)
+    /// workspace 根目录 (覆盖配置 data_dir, 子目录仍按 sha1(root) 隔离)
     #[arg(long)]
-    data_root: Option<String>,
+    data_dir: Option<String>,
     /// TOML 配置文件路径 (默认 ~/.config/ai_cli/config.toml)
     #[arg(long)]
     config: Option<PathBuf>,
-    /// 工作区根目录 (必填: AI 场景多项目切换, 不写入配置)
+    /// 项目根目录 (必填: AI 场景多项目切换, 不写入配置)
     #[arg(long, required = true)]
-    root: PathBuf,
+    project_dir: PathBuf,
     #[command(subcommand)]
     cmd: Sub,
 }
@@ -151,8 +151,8 @@ fn run(cli: &Cli) -> anyhow::Result<()> {
             resolve_server(path, &cli.server, cli.command.as_deref(), &config)?,
             cli.maven_settings.as_deref(),
             &config,
-        ), &cli.root, cli.data_root.as_deref(), &config);
-            let mut client = LspClient::start(&cli.root, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
+        ), &cli.project_dir, cli.data_dir.as_deref(), &config);
+            let mut client = LspClient::start(&cli.project_dir, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
             let v = client.document_symbols(path)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&v)?);
@@ -166,8 +166,8 @@ fn run(cli: &Cli) -> anyhow::Result<()> {
             resolve_server(path, &cli.server, cli.command.as_deref(), &config)?,
             cli.maven_settings.as_deref(),
             &config,
-        ), &cli.root, cli.data_root.as_deref(), &config);
-            let mut client = LspClient::start(&cli.root, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
+        ), &cli.project_dir, cli.data_dir.as_deref(), &config);
+            let mut client = LspClient::start(&cli.project_dir, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
             let v = client.hover(path, *line, *char)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&v)?);
@@ -186,8 +186,8 @@ fn run(cli: &Cli) -> anyhow::Result<()> {
             resolve_server(path, &cli.server, cli.command.as_deref(), &config)?,
             cli.maven_settings.as_deref(),
             &config,
-        ), &cli.root, cli.data_root.as_deref(), &config);
-            let mut client = LspClient::start(&cli.root, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
+        ), &cli.project_dir, cli.data_dir.as_deref(), &config);
+            let mut client = LspClient::start(&cli.project_dir, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
             let v = client.definition(path, *line, *char)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&v)?);
@@ -206,8 +206,8 @@ fn run(cli: &Cli) -> anyhow::Result<()> {
             resolve_server(path, &cli.server, cli.command.as_deref(), &config)?,
             cli.maven_settings.as_deref(),
             &config,
-        ), &cli.root, cli.data_root.as_deref(), &config);
-            let mut client = LspClient::start(&cli.root, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
+        ), &cli.project_dir, cli.data_dir.as_deref(), &config);
+            let mut client = LspClient::start(&cli.project_dir, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
             let v = client.references(path, *line, *char, !*no_declaration)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&v)?);
@@ -226,8 +226,8 @@ fn run(cli: &Cli) -> anyhow::Result<()> {
             resolve_server(path, &cli.server, cli.command.as_deref(), &config)?,
             cli.maven_settings.as_deref(),
             &config,
-        ), &cli.root, cli.data_root.as_deref(), &config);
-            let mut client = LspClient::start(&cli.root, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
+        ), &cli.project_dir, cli.data_dir.as_deref(), &config);
+            let mut client = LspClient::start(&cli.project_dir, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
             let v = client.completion(path, *line, *char)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&v)?);
@@ -246,9 +246,9 @@ fn run(cli: &Cli) -> anyhow::Result<()> {
             resolve_server(path, &cli.server, cli.command.as_deref(), &config)?,
             cli.maven_settings.as_deref(),
             &config,
-        ), &cli.root, cli.data_root.as_deref(), &config);
+        ), &cli.project_dir, cli.data_dir.as_deref(), &config);
             println!("[test] 服务器: {} | 命令: {}", server.id, server.command.join(" "));
-            let mut client = LspClient::start(&cli.root, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
+            let mut client = LspClient::start(&cli.project_dir, &server, cli.open_delay_ms.unwrap_or(config.lsp.open_delay_ms))?;
             println!("[test] initialize 完成, 运行测试套件...");
             let reports = run_full_test(&mut client, path);
             let passed = reports.iter().filter(|r| r.ok).count();

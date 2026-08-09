@@ -162,15 +162,15 @@ pub fn apply_maven_settings(
     server
 }
 
-/// 按 data_root 配置注入 -data (workspace 目录): data_root/<sha1(root绝对路径)>
-/// 优先级: CLI --data-root > 配置 [lsp].data_root
+/// 按 data_dir 配置注入 -data (workspace 目录): data_dir/<sha1(root绝对路径)>
+/// 优先级: CLI --data-dir > 配置 [lsp].data_dir
 /// 设计: AI 场景多项目切换, root 由命令行必填传入;
 ///      workspace 按项目路径哈希自动隔离/复用, 无需为每个项目手写 -data
 /// 若 command 已显式包含 -data, 则尊重显式配置不覆盖
 pub fn apply_data_dir(
     mut server: ServerDef,
-    root: &Path,
-    cli_data_root: Option<&str>,
+    project_dir: &Path,
+    cli_data_dir: Option<&str>,
     config: &Settings,
 ) -> ServerDef {
     if server.command.iter().any(|a| a == "-data") {
@@ -183,19 +183,19 @@ pub fn apply_data_dir(
     if !server.command.iter().any(|a| a == "-jar") {
         return server;
     }
-    let data_root = cli_data_root
+    let data_dir = cli_data_dir
         .map(|s| s.to_string())
-        .or_else(|| config.lsp.data_root.clone());
-    if let Some(data_root) = data_root {
-        let abs = if root.is_absolute() {
-            root.to_path_buf()
+        .or_else(|| config.lsp.data_dir.clone());
+    if let Some(data_dir) = data_dir {
+        let abs = if project_dir.is_absolute() {
+            project_dir.to_path_buf()
         } else {
-            std::env::current_dir().unwrap_or_default().join(root)
+            std::env::current_dir().unwrap_or_default().join(project_dir)
         };
         let norm = abs.to_string_lossy().replace('\\', "/");
         // sha1 0.10 需通过 digest trait 使用 (Sha1::digest 静态方法)
         let digest = format!("{:x}", sha1::Sha1::digest(norm.as_bytes()));
-        let dir = Path::new(&data_root).join(digest);
+        let dir = Path::new(&data_dir).join(digest);
         let _ = std::fs::create_dir_all(&dir);
         // 坑: -data 是 launcher 参数, 必须放在 -jar <launcher.jar> 之后 (等号形式不被识别);
         //     -jar 与其 jar 路径是成对的, 插入点应为 idx+2 (跳过 launcher.jar)
