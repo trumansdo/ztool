@@ -156,14 +156,23 @@ pub fn apply_maven_settings(
 }
 
 /// 按 data_root 配置注入 -data (workspace 目录): data_root/<sha1(root绝对路径)>
+/// 优先级: CLI --data-root > 配置 [lsp].data_root
 /// 设计: AI 场景多项目切换, root 由命令行必填传入;
 ///      workspace 按项目路径哈希自动隔离/复用, 无需为每个项目手写 -data
 /// 若 command 已显式包含 -data, 则尊重显式配置不覆盖
-pub fn apply_data_dir(mut server: ServerDef, root: &Path, config: &Settings) -> ServerDef {
+pub fn apply_data_dir(
+    mut server: ServerDef,
+    root: &Path,
+    cli_data_root: Option<&str>,
+    config: &Settings,
+) -> ServerDef {
     if server.command.iter().any(|a| a == "-data") {
         return server;
     }
-    if let Some(data_root) = &config.lsp.data_root {
+    let data_root = cli_data_root
+        .map(|s| s.to_string())
+        .or_else(|| config.lsp.data_root.clone());
+    if let Some(data_root) = data_root {
         let abs = if root.is_absolute() {
             root.to_path_buf()
         } else {
@@ -172,7 +181,7 @@ pub fn apply_data_dir(mut server: ServerDef, root: &Path, config: &Settings) -> 
         let norm = abs.to_string_lossy().replace('\\', "/");
         // sha1 0.10 需通过 digest trait 使用 (Sha1::digest 静态方法)
         let digest = format!("{:x}", sha1::Sha1::digest(norm.as_bytes()));
-        let dir = Path::new(data_root).join(digest);
+        let dir = Path::new(&data_root).join(digest);
         let _ = std::fs::create_dir_all(&dir);
         // 坑: -data 是 launcher 参数, 必须放在 -jar <launcher.jar> 之后 (等号形式不被识别);
         //     -jar 与其 jar 路径是成对的, 插入点应为 idx+2 (跳过 launcher.jar)
