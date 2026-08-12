@@ -1,20 +1,35 @@
-//! LspClient —— 单个语言服务器的 stdio 客户端
+//! 类型安全的 LSP 客户端
 //!
-//! 生命周期：`start`(spawn+initialize) → 查询方法 → `shutdown_exit`
-//! 特性：mtime 缓存（文件未变更跳过 didOpen）、1-based 行号转换、publishDiagnostics 捕获
+//! 泛型 `LspClient<T: LspTransport>`，编译期多态，零开销。
+//! 与旧 `lsp::client::LspClient` 完全独立。
+//!
+//! # javac-lsp vs jdtls 关键差异
+//!
+//! | 特性 | jdtls | javac-lsp |
+//! |:--|:--|:--|
+//! | classpath 推断 | 自动从 pom.xml/gradle 推断 | 需手动发送 didChangeConfiguration |
+//! | 引用查找 | 全项目索引 | 仅搜索 FileStore 中已打开的文件 |
+//! | hover 字段声明 | 支持 | 不支持 (FindHoverElement 缺 visitVariable) |
+//! | data-dir | 有 (缓存索引) | 无 (纯内存) |
+//! | 构建 | java/buildWorkspace | 不支持 |
+//!
+//! 因此 javac-lsp 适合轻量符号/定义查询，jdtls 适合完整的 IDE 级功能。
 
-use crate::lsp::jsonrpc::{read_msg, write_msg};
 use crate::lsp::servers::ServerDef;
-use serde_json::{json, Value};
+use crate::lsp::transport::LspTransport;
+use anyhow::Result;
+use lsp_types::*;
+use serde::{de::DeserializeOwned, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::path::Path;
-use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
-/// 文件路径 → file:// URI（Windows 盘符转 file:///D:/...）
+/// 文件路径 → file:// URI
 pub fn path_to_uri(path: &Path) -> String {
     let abs = if path.is_absolute() {
         path.to_path_buf()
@@ -29,54 +44,51 @@ pub fn path_to_uri(path: &Path) -> String {
     }
 }
 
-/// LSP 客户端
-pub struct LspClient {
-    child: Child,
-    stdin: ChildStdin,
-    reader: BufReader<ChildStdout>,
+/// 类型安全 LSP 客户端
+pub struct LspClient<T: LspTransport> {
+    transport: T,
+    next_id: u64,
     /// 后台线程消费 stderr 后的尾部内容 (供 EOF/崩溃诊断)
     stderr_tail: Arc<Mutex<String>>,
-    next_id: u32,
-    root_uri: String,
-    language_id: String,
-    opened: HashMap<String, SystemTime>, // uri -> mtime
-    /// didOpen 后缓冲等待时长 (等服务器处理完文档再查询, 防空结果)
+    /// 子进程句柄 (用于 shutdown/exit)
+    child: Option<Child>,
+    /// 已打开文件 mtime 缓存
+    opened: HashMap<String, SystemTime>,
+    /// didOpen 后缓冲等待时长
     open_delay: Duration,
-    /// 捕获的 publishDiagnostics 通知（request 循环中收集）
+    /// 捕获的 publishDiagnostics
     pub pushed_diagnostics: Vec<Vec<Value>>,
 }
 
-impl LspClient {
+impl LspClient<crate::lsp::transport::StdioTransport> {
     /// 启动服务器进程并完成 initialize 握手
-    /// open_delay_ms: didOpen 后缓冲等待, 默认 200ms
-    pub fn start(project_dir: &Path, server: &ServerDef, open_delay_ms: u64) -> anyhow::Result<Self> {
+    pub fn start(project_dir: &Path, server: &ServerDef, open_delay_ms: u64) -> Result<Self> {
         let mut cmd = Command::new(&server.command[0]);
         cmd.args(&server.command[1..])
             .current_dir(project_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            // 坑: stderr 管道若无人消费会积压(默认~64KB高水位)后服务器写阻塞卡死
-            //     (jdtls 日志量大时实测卡死 initialize), 故保留管道但必须后台线程消费;
-            //     尾部内容供 EOF/崩溃诊断(曾用此定位 rust-analyzer "unexpected flag")
             .stderr(Stdio::piped());
+
         let mut child = cmd.spawn().map_err(|e| {
             anyhow::anyhow!(
-                "启动 LSP 服务器 '{}' 失败: {} (命令: {}，安装提示: {})",
+                "启动 LSP 服务器 '{}' 失败: {} (命令: {})",
                 server.id,
                 e,
-                server.command.join(" "),
-                server.install_hint
+                server.command.join(" ")
             )
         })?;
+
         let stdin = child
             .stdin
             .take()
-            .ok_or_else(|| anyhow::anyhow!("无法获取服务器 stdin"))?;
+            .ok_or_else(|| anyhow::anyhow!("无法获取 stdin"))?;
         let stdout = child
             .stdout
             .take()
-            .ok_or_else(|| anyhow::anyhow!("无法获取服务器 stdout"))?;
-        // 后台线程持续消费 stderr (防积压卡死), 保留尾部 4KB 供诊断
+            .ok_or_else(|| anyhow::anyhow!("无法获取 stdout"))?;
+
+        // 后台消费 stderr
         let stderr_tail: Arc<Mutex<String>> = Arc::new(Mutex::new(String::new()));
         if let Some(mut se) = child.stderr.take() {
             let tail = stderr_tail.clone();
@@ -99,78 +111,83 @@ impl LspClient {
                 }
             });
         }
-        let mut client = LspClient {
-            child,
-            stdin,
-            reader: BufReader::new(stdout),
+
+        let transport = crate::lsp::transport::StdioTransport::new(stdout, stdin);
+        let root_uri = path_to_uri(project_dir);
+
+        let mut client = Self {
+            transport,
+            next_id: 1,
             stderr_tail,
-            next_id: 0,
-            root_uri: path_to_uri(project_dir),
-            language_id: server.language_id.clone(),
+            child: Some(child),
             opened: HashMap::new(),
             open_delay: Duration::from_millis(open_delay_ms),
             pushed_diagnostics: Vec::new(),
         };
-        client.initialize()?;
+
+        // initialize 握手
+        client.initialize(&root_uri)?;
+
         Ok(client)
     }
+}
 
-    /// initialize 握手（声明客户端能力）
-    fn initialize(&mut self) -> anyhow::Result<Value> {
-        let params = json!({
-            "processId": std::process::id(),
-            "rootUri": self.root_uri,
-            "capabilities": {
-                "textDocument": {
-                    "documentSymbol": { "hierarchicalDocumentSymbolSupport": true },
-                    "hover": { "contentFormat": ["markdown", "plaintext"] },
-                    "definition": { "linkSupport": true }
-                }
-            },
-            "workspaceFolders": [{ "uri": self.root_uri, "name": "root" }]
-        });
-        let r = self.request("initialize", params)?;
-        self.notify("initialized", json!({}))?;
-        Ok(r)
-    }
-
-    fn next_id(&mut self) -> u32 {
+impl<T: LspTransport> LspClient<T> {
+    /// 发送请求，返回类型化响应
+    pub fn request<P: Serialize, R: DeserializeOwned>(
+        &mut self,
+        method: &str,
+        params: &P,
+    ) -> Result<R> {
+        let id = self.next_id;
         self.next_id += 1;
-        self.next_id
-    }
 
-    /// 发送请求并等待对应 id 的响应（自动跳过通知；捕获 publishDiagnostics）
-    pub fn request(&mut self, method: &str, params: Value) -> anyhow::Result<Value> {
-        let id = self.next_id();
-        write_msg(
-            &mut self.stdin,
-            &json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params}),
-        )?;
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params
+        });
+
+        self.transport.write_message(&request.to_string())?;
+
         loop {
-            let msg = read_msg(&mut self.reader).map_err(|e| {
-                let exit = self.child.try_wait().ok().flatten();
-                let err_tail = self.stderr_tail.lock().unwrap_or_else(|p| p.into_inner()).clone();
+            let raw = self.transport.read_message().map_err(|e| {
+                let exit = self
+                    .child
+                    .as_mut()
+                    .and_then(|c| c.try_wait().ok().flatten());
+                let err_tail = self
+                    .stderr_tail
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .clone();
                 anyhow::anyhow!(
                     "{} 阶段读响应失败: {} (进程退出: {:?}, stderr: {})",
-                    method, e, exit, err_tail.chars().take(300).collect::<String>()
+                    method,
+                    e,
+                    exit,
+                    err_tail.chars().take(300).collect::<String>()
                 )
             })?;
-            // 坑: 不能像 subprocess.communicate() 那样等待进程退出——LSP 服务器响应后
-            //     会持续存活等待后续请求, communicate() 会一直阻塞被误判为"卡死/超时"
-            //     (曾因此把 3 秒能响应的 jdtls 误判为 220s 无响应)
-            if msg.get("id").and_then(Value::as_u64) == Some(id as u64) {
+
+            let msg: Value = serde_json::from_str(&raw)?;
+
+            // 匹配响应
+            if msg.get("id").and_then(Value::as_u64) == Some(id) {
                 if let Some(err) = msg.get("error") {
                     anyhow::bail!("LSP 错误 {}: {}", method, err);
                 }
-                return Ok(msg.get("result").cloned().unwrap_or(Value::Null));
+                let result = msg.get("result").cloned().unwrap_or(Value::Null);
+                return Ok(serde_json::from_value(result)?);
             }
-            // 通知: 捕获 publishDiagnostics, 其余跳过
-            // 坑: publishDiagnostics 是异步推送, 只有在 request 驱动的读循环中才会被
-            //     消费到(服务器不会主动推给无人读的 socket), 故在此统一收集
-            if msg.get("method").and_then(Value::as_str) == Some("textDocument/publishDiagnostics") {
-                if let Some(diags) = msg
-                    .pointer("/params/diagnostics")
-                    .and_then(Value::as_array)
+
+            // 收集 publishDiagnostics 通知
+            if msg.get("method").and_then(Value::as_str)
+                == Some("textDocument/publishDiagnostics")
+            {
+                if let Some(diags) =
+                    msg.pointer("/params/diagnostics").and_then(Value::as_array)
                 {
                     self.pushed_diagnostics.push(diags.clone());
                 }
@@ -178,120 +195,113 @@ impl LspClient {
         }
     }
 
-    /// 发送通知（无响应）
-    pub fn notify(&mut self, method: &str, params: Value) -> anyhow::Result<()> {
-        write_msg(
-            &mut self.stdin,
-            &json!({"jsonrpc": "2.0", "method": method, "params": params}),
-        )?;
+    /// 发送通知 (无响应)
+    pub fn notify<P: Serialize>(&mut self, method: &str, params: &P) -> Result<()> {
+        let notification = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        });
+        self.transport.write_message(&notification.to_string())
+    }
+
+    /// initialize 握手
+    #[allow(deprecated)]
+    fn initialize(&mut self, root_uri: &str) -> Result<()> {
+        let root_uri: Uri = root_uri
+            .parse()
+            .map_err(|e| anyhow::anyhow!("无效 URI: {}", e))?;
+
+        let params = InitializeParams {
+            process_id: Some(std::process::id()),
+            root_uri: Some(root_uri.clone()),
+            capabilities: ClientCapabilities {
+                text_document: Some(TextDocumentClientCapabilities {
+                    document_symbol: Some(DocumentSymbolClientCapabilities {
+                        hierarchical_document_symbol_support: Some(true),
+                        ..Default::default()
+                    }),
+                    hover: Some(HoverClientCapabilities {
+                        content_format: Some(vec![MarkupKind::Markdown, MarkupKind::PlainText]),
+                        ..Default::default()
+                    }),
+                    definition: Some(GotoCapability {
+                        link_support: Some(true),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+                workspace: Some(WorkspaceClientCapabilities {
+                    workspace_folders: Some(true),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            workspace_folders: Some(vec![WorkspaceFolder {
+                uri: root_uri,
+                name: "root".to_string(),
+            }]),
+            ..Default::default()
+        };
+
+        let _: InitializeResult = self.request("initialize", &params)?;
+        self.notify("initialized", &serde_json::json!({}))?;
         Ok(())
     }
 
-    /// 打开文件（mtime 缓存: 未变更跳过; 变更则 didClose 后重开）
-    /// 对齐 pi-coding-tools client.ts 的 mtime 优化: 避免重复 didOpen 浪费 IO,
-    /// 外部编辑(mtime 变化)时通过 didClose→didOpen 重新加载
-    pub fn open_file(&mut self, path: &Path) -> anyhow::Result<String> {
+    /// 打开文件 (mtime 缓存优化)
+    pub fn open_file(&mut self, path: &Path) -> Result<String> {
         let uri = path_to_uri(path);
         let mtime = fs::metadata(path).and_then(|m| m.modified())?;
+
         if let Some(last) = self.opened.get(&uri) {
             if *last == mtime {
                 return Ok(uri);
             }
-            self.notify("textDocument/didClose", json!({"textDocument": {"uri": uri}}))?;
+            self.notify(
+                "textDocument/didClose",
+                &serde_json::json!({"textDocument": {"uri": uri}}),
+            )?;
             self.opened.remove(&uri);
         }
+
         let text = fs::read_to_string(path)?;
         self.notify(
             "textDocument/didOpen",
-            json!({
-                "textDocument": { "uri": uri, "languageId": self.language_id, "version": 1, "text": text }
+            &serde_json::json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": "java",
+                    "version": 1,
+                    "text": text
+                }
             }),
         )?;
         self.opened.insert(uri.clone(), mtime);
-        // 坑: didOpen 是异步通知(无响应), 立即查询可能返回空结果;
-        //     需缓冲 open_delay 让服务器完成文档解析/reconcile
         std::thread::sleep(self.open_delay);
         Ok(uri)
     }
 
-    /// 悬停信息（line 为 1-based，内部转 0-based）
-    /// 坑: AI/命令行习惯传 1-based 行号, LSP 协议是 0-based, 漏转换会错位一行
-    pub fn hover(&mut self, path: &Path, line: usize, character: usize) -> anyhow::Result<Value> {
-        let uri = self.open_file(path)?;
-        self.request(
-            "textDocument/hover",
-            json!({
-                "textDocument": {"uri": uri},
-                "position": {"line": line - 1, "character": character}
-            }),
-        )
+    /// 发送 workspace/didChangeConfiguration 配置 classpath (javac-lsp 需要)
+    pub fn configure_classpath(&mut self, classpath: &[String]) -> Result<()> {
+        let settings = serde_json::json!({
+            "java": {
+                "classPath": classpath
+            }
+        });
+        self.notify("workspace/didChangeConfiguration", &serde_json::json!({
+            "settings": settings
+        }))
     }
 
-    /// 文档符号大纲
-    pub fn document_symbols(&mut self, path: &Path) -> anyhow::Result<Value> {
-        let uri = self.open_file(path)?;
-        self.request("textDocument/documentSymbol", json!({"textDocument": {"uri": uri}}))
-    }
-
-    /// 跳转定义
-    pub fn definition(
-        &mut self,
-        path: &Path,
-        line: usize,
-        character: usize,
-    ) -> anyhow::Result<Value> {
-        let uri = self.open_file(path)?;
-        self.request(
-            "textDocument/definition",
-            json!({
-                "textDocument": {"uri": uri},
-                "position": {"line": line - 1, "character": character}
-            }),
-        )
-    }
-
-    /// 查找引用
-    pub fn references(
-        &mut self,
-        path: &Path,
-        line: usize,
-        character: usize,
-        include_decl: bool,
-    ) -> anyhow::Result<Value> {
-        let uri = self.open_file(path)?;
-        self.request(
-            "textDocument/references",
-            json!({
-                "textDocument": {"uri": uri},
-                "position": {"line": line - 1, "character": character},
-                "context": {"includeDeclaration": include_decl}
-            }),
-        )
-    }
-
-    /// 代码补全
-    pub fn completion(
-        &mut self,
-        path: &Path,
-        line: usize,
-        character: usize,
-    ) -> anyhow::Result<Value> {
-        let uri = self.open_file(path)?;
-        self.request(
-            "textDocument/completion",
-            json!({
-                "textDocument": {"uri": uri},
-                "position": {"line": line - 1, "character": character}
-            }),
-        )
-    }
-
-    /// 优雅关闭: shutdown → exit → 强制 kill 兜底
-    pub fn shutdown_exit(&mut self) -> anyhow::Result<()> {
-        let _ = self.request("shutdown", Value::Null);
-        let _ = self.notify("exit", json!({}));
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+    /// 优雅关闭
+    pub fn shutdown_exit(&mut self) -> Result<()> {
+        let _ = self.request::<_, Value>("shutdown", &serde_json::json!(null));
+        let _ = self.notify("exit", &serde_json::json!({}));
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
         Ok(())
     }
 }

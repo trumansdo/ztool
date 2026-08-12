@@ -215,6 +215,7 @@ fn run_write(
 }
 
 fn print_read_result(result: &ai_cli::excel::reader::ReadResult, format: &OutputFormat) -> Result<()> {
+    use ai_cli::output::format::{escape_csv, print_table};
     match format {
         OutputFormat::Json => {
             let rows: Vec<Vec<&str>> = result.rows.iter()
@@ -229,13 +230,7 @@ fn print_read_result(result: &ai_cli::excel::reader::ReadResult, format: &Output
             let mut handle = stdout.lock();
             writeln!(handle, "{}", result.columns.join(","))?;
             for row in &result.rows {
-                let escaped: Vec<String> = row.iter().map(|v| {
-                    if v.contains(',') || v.contains('"') || v.contains('\n') {
-                        format!("\"{}\"", v.replace('"', "\"\""))
-                    } else {
-                        v.clone()
-                    }
-                }).collect();
+                let escaped: Vec<String> = row.iter().map(|v| escape_csv(v)).collect();
                 writeln!(handle, "{}", escaped.join(","))?;
             }
         }
@@ -244,52 +239,9 @@ fn print_read_result(result: &ai_cli::excel::reader::ReadResult, format: &Output
                 println!("(无数据)");
                 return Ok(());
             }
-            // 计算列宽
-            let mut widths: Vec<usize> = result.columns.iter().map(|c| c.len()).collect();
-            for row in &result.rows {
-                for (i, val) in row.iter().enumerate() {
-                    if i < widths.len() {
-                        widths[i] = widths[i].max(val.len());
-                    }
-                }
-            }
-            for w in &mut widths {
-                *w = (*w).min(60);
-            }
-
-            use std::io::Write;
-            let stdout = std::io::stdout();
-            let mut handle = stdout.lock();
-
-            let sep: String = widths.iter().map(|w| "-".repeat(*w + 2)).collect::<Vec<_>>().join("+");
-
-            // 表头
-            write!(handle, "| ")?;
-            for (i, col) in result.columns.iter().enumerate() {
-                write!(handle, "{:width$} | ", truncate(col, widths[i]), width = widths[i])?;
-            }
-            writeln!(handle)?;
-            writeln!(handle, "|{sep}|")?;
-
-            // 数据
-            for row in &result.rows {
-                write!(handle, "| ")?;
-                for (i, val) in row.iter().enumerate() {
-                    let w = widths.get(i).copied().unwrap_or(10);
-                    write!(handle, "{:width$} | ", truncate(val, w), width = w)?;
-                }
-                writeln!(handle)?;
-            }
-            writeln!(handle, "{} 行", result.row_count)?;
+            let rows: Vec<Vec<String>> = result.rows.clone();
+            print_table(&result.columns, &rows, result.row_count)?;
         }
     }
     Ok(())
-}
-
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}…", &s[..max_len - 1])
-    }
 }

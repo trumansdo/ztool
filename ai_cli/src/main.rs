@@ -6,7 +6,7 @@ mod cli;
 
 use clap::Parser;
 use cli::args::{Cli, Commands};
-use ai_cli::{run_fetch, run_config};
+use ai_cli::{run_fetch, run_config, config::BinConfig};
 use anyhow::Result;
 
 #[tokio::main]
@@ -20,10 +20,15 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+    let proxy = BinConfig::load()
+        .ok()
+        .and_then(|c| c.web_fetch)
+        .and_then(|w| w.http_proxy)
+        .filter(|p| !p.is_empty());
 
     match &cli.command {
         Commands::Fetch { url, spa, output, format, browser, timeout } => {
-            run_fetch(url, *spa, output.as_deref(), format, browser.as_deref(), *timeout, None).await?;
+            run_fetch(url, *spa, output.as_deref(), format, browser.as_deref(), *timeout, proxy.as_deref()).await?;
         }
         Commands::Config { action, key, value } => {
             run_config(action.as_deref(), key.as_deref(), value.as_deref())?;

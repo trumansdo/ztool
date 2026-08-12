@@ -1,8 +1,7 @@
 //! 配置管理模块
 //!
-//! 管理 AI CLI 的全局配置，包括 API Key、默认模型、偏好设置等。
-//! 配置文件路径: `~/.config/ai_cli/config.toml`
+//! 统一配置入口 `BinConfig`，所有工具共用 exe 同级 `binconfig.toml`。
 
-pub mod settings;
+pub mod binconfig;
 
-pub use settings::*;
+pub use binconfig::*;

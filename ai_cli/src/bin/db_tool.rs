@@ -118,10 +118,10 @@ fn main() -> Result<()> {
         }
         Commands::TableStruct { db_name, table, owner } => {
             let owner = if owner.is_empty() { None } else { Some(owner.as_str()) };
-            run_db_struct(db_name, owner.unwrap_or(""), table, format)?;
+            run_db_struct(db_name, owner.unwrap_or(""), table)?;
         }
         Commands::Tables { db_name, owner } => {
-            run_db_tables(db_name, owner.as_deref(), format)?;
+            run_db_tables(db_name, owner.as_deref())?;
         }
         Commands::Init => run_db_init_config()?,
     }

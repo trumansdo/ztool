@@ -165,6 +165,36 @@ pub fn format_locations(v: &Value) -> String {
     }
 }
 
+/// 诊断信息格式化: `[ERROR] file:line:col message`
+pub fn format_diagnostics(diags: &[Value]) -> String {
+    if diags.is_empty() {
+        return "(无诊断信息)".into();
+    }
+    let mut out = String::new();
+    for d in diags {
+        let severity = d.get("severity").and_then(Value::as_u64).unwrap_or(0);
+        let sev = match severity {
+            1 => "ERROR",
+            2 => "WARN ",
+            3 => "INFO ",
+            _ => "HINT ",
+        };
+        let msg = d.get("message").and_then(Value::as_str).unwrap_or("?");
+        let range = d.get("range");
+        let (line, col) = range
+            .and_then(|r| r.get("start"))
+            .map(|s| {
+                (
+                    s.get("line").and_then(Value::as_u64).unwrap_or(0) + 1,
+                    s.get("character").and_then(Value::as_u64).unwrap_or(0) + 1,
+                )
+            })
+            .unwrap_or((0, 0));
+        out.push_str(&format!("[{}] {}:{}:{} {}\n", sev, line, col, line, msg));
+    }
+    out
+}
+
 /// 补全项格式化: `kind label detail`
 pub fn format_completions(v: &Value) -> String {
     let items = match v {

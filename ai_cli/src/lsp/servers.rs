@@ -1,11 +1,11 @@
 //! 语言服务器注册表与配置解析
 //!
 //! 内置服务器表（对齐 pi-coding-tools 的 servers.ts），支持：
-//! - TOML 配置覆盖（`~/.config/ai_cli/config.toml` 的 `[lsp.<id>]` 段）
+//! - TOML 配置覆盖（exe 同级 binconfig.toml 的 `[lsp.<id>]` 段）
 //! - CLI `--command` 覆盖（最高优先级）
 //! - Maven settings 注入（方案 B：`-Djava.configuration.maven.userSettings`）
 
-use crate::config::Settings;
+use crate::config::BinConfig;
 use serde::{Deserialize, Serialize};
 use sha1::Digest;
 use std::path::Path;
@@ -21,11 +21,12 @@ pub struct ServerDef {
 }
 
 /// 内置服务器注册表
+/// 所有 command 置空，强制通过 binconfig.toml 配置启动命令
 pub fn builtin_servers() -> Vec<ServerDef> {
     vec![
         ServerDef {
             id: "typescript-language-server".into(),
-            command: vec!["typescript-language-server".into(), "--stdio".into()],
+            command: vec![],
             extensions: vec![".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]
                 .into_iter()
                 .map(String::from)
@@ -35,35 +36,42 @@ pub fn builtin_servers() -> Vec<ServerDef> {
         },
         ServerDef {
             id: "pyright".into(),
-            command: vec!["pyright-langserver".into(), "--stdio".into()],
+            command: vec![],
             extensions: vec![".py".into()],
             language_id: "python".into(),
             install_hint: "npm install -g pyright".into(),
         },
         ServerDef {
+            id: "javac-lsp".into(),
+            command: vec![],
+            extensions: vec![".java".into()],
+            language_id: "java".into(),
+            install_hint: "在 binconfig.toml 的 [lsp.javac-lsp] 段配置 command 和 vars".into(),
+        },
+        ServerDef {
             id: "jdtls".into(),
-            command: vec!["jdtls".into()],
+            command: vec![],
             extensions: vec![".java".into()],
             language_id: "java".into(),
             install_hint: "Install Eclipse JDT Language Server (jdtls). Requires JDK 17+.".into(),
         },
         ServerDef {
             id: "rust-analyzer".into(),
-            command: vec!["rust-analyzer".into()],
+            command: vec![],
             extensions: vec![".rs".into()],
             language_id: "rust".into(),
             install_hint: "rustup component add rust-analyzer".into(),
         },
         ServerDef {
             id: "kotlin-language-server".into(),
-            command: vec!["kotlin-language-server".into()],
+            command: vec![],
             extensions: vec![".kt".into(), ".kts".into()],
             language_id: "kotlin".into(),
             install_hint: "Install kotlin-language-server. Requires JDK.".into(),
         },
         ServerDef {
             id: "clangd".into(),
-            command: vec!["clangd".into()],
+            command: vec![],
             extensions: vec![".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hxx"]
                 .into_iter()
                 .map(String::from)
@@ -96,27 +104,35 @@ pub fn resolve_server(
     file: &Path,
     cli_server_id: &str,
     cli_command: Option<&str>,
-    config: &Settings,
+    config: &BinConfig,
 ) -> anyhow::Result<ServerDef> {
-    let lang = detect_language(file).ok_or_else(|| {
-        anyhow::anyhow!(
-            "无法识别的文件类型: {} (支持: java/ts/py/kt/cpp)",
-            file.display()
-        )
-    })?;
-    let builtin = builtin_servers()
-        .into_iter()
-        .find(|s| s.language_id == lang)
-        .unwrap();
+    // 显式指定 server 时跳过文件类型检测
+    let builtin = if cli_server_id != "auto" {
+        builtin_servers()
+            .into_iter()
+            .find(|s| s.id == cli_server_id)
+            .ok_or_else(|| anyhow::anyhow!("未知服务器: {}", cli_server_id))?
+    } else {
+        let lang = detect_language(file).ok_or_else(|| {
+            anyhow::anyhow!(
+                "无法识别的文件类型: {} (支持: java/ts/py/kt/cpp)",
+                file.display()
+            )
+        })?;
+        builtin_servers()
+            .into_iter()
+            .find(|s| s.language_id == lang)
+            .unwrap()
+    };
 
     let mut server = builtin.clone();
     // 配置覆盖 ([lsp.<id>])
     // 坑: TOML 的 [lsp.jdtls] 反序列化后是 lsp: {jdtls: {...}},
-    //     因此 Settings.lsp 是 LspSection{server: HashMap} 且 server 用 #[serde(flatten)] 收集,
+    //     因此 BinConfig.lsp 是 Option<LspSection>{server: HashMap} 且 server 用 #[serde(flatten)] 收集,
     //     否则 [lsp.jdtls] 子表会被当作未知字段静默丢弃
-    if let Some(ov) = config.lsp.server.get(&builtin.id) {
-        if ov.disabled.unwrap_or(false) {
-            anyhow::bail!("服务器 '{}' 已在配置中禁用", builtin.id);
+    if let Some(ov) = config.lsp.as_ref().and_then(|l| l.server.get(&builtin.id)) {
+        if ov.disabled {
+            anyhow::bail!("服务器 '{}' 已在配置中禁用 (disabled = true)", builtin.id);
         }
         if let Some(cmd) = &ov.command {
             server.command = cmd.clone();
@@ -125,14 +141,6 @@ pub fn resolve_server(
     // 命令行覆盖（最高优先级）
     if let Some(cmd) = cli_command {
         server.command = parse_command(cmd);
-    }
-    // --server 指定其它语言服务器
-    if cli_server_id != builtin.id {
-        if let Some(s) = builtin_servers().into_iter().find(|s| s.id == cli_server_id) {
-            if s.language_id == lang {
-                server = s;
-            }
-        }
     }
     Ok(server)
 }
@@ -143,11 +151,12 @@ pub fn resolve_server(
 pub fn apply_maven_settings(
     mut server: ServerDef,
     cli_ms: Option<&str>,
-    config: &Settings,
+    config: &BinConfig,
 ) -> ServerDef {
+    let lsp = config.lsp.as_ref();
     let ms = cli_ms
         .map(|s| s.to_string())
-        .or_else(|| config.lsp.server.get(&server.id).and_then(|o| o.maven_settings.clone()));
+        .or_else(|| lsp.and_then(|l| l.server.get(&server.id).and_then(|o| o.maven_settings.clone())));
     if let Some(path) = ms {
         let arg = format!("-Djava.configuration.maven.userSettings={}", path);
         // 坑: java 命令的 -D 系统属性必须放在 -jar 之前,
@@ -171,7 +180,7 @@ pub fn apply_data_dir(
     mut server: ServerDef,
     project_dir: &Path,
     cli_data_dir: Option<&str>,
-    config: &Settings,
+    config: &BinConfig,
 ) -> ServerDef {
     if server.command.iter().any(|a| a == "-data") {
         return server;
@@ -183,9 +192,12 @@ pub fn apply_data_dir(
     if !server.command.iter().any(|a| a == "-jar") {
         return server;
     }
+    let lsp = config.lsp.as_ref();
+    // 优先级: CLI --data-dir > [lsp.<id>].data_dir > [lsp].data_dir (全局兜底)
     let data_dir = cli_data_dir
         .map(|s| s.to_string())
-        .or_else(|| config.lsp.data_dir.clone());
+        .or_else(|| lsp.and_then(|l| l.server.get(&server.id).and_then(|o| o.data_dir.clone())))
+        .or_else(|| lsp.and_then(|l| l.data_dir.clone()));
     if let Some(data_dir) = data_dir {
         let abs = if project_dir.is_absolute() {
             project_dir.to_path_buf()

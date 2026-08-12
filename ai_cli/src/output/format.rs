@@ -70,6 +70,69 @@ fn format_json(content: &ExtractedContent) -> String {
     })
 }
 
+// ============================================================
+// 公共格式化工具（db_tool / excel_tool 共用）
+// ============================================================
+
+/// 截断字符串到指定宽度
+pub fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max_len - 1])
+    }
+}
+
+/// 打印对齐的文本表格（通用）
+pub fn print_table(columns: &[String], rows: &[Vec<String>], row_count: usize) -> std::io::Result<()> {
+    use std::io::Write;
+    if columns.is_empty() {
+        return Ok(());
+    }
+    let mut widths: Vec<usize> = columns.iter().map(|c| c.len()).collect();
+    for row in rows {
+        for (i, val) in row.iter().enumerate() {
+            if i < widths.len() {
+                widths[i] = widths[i].max(val.len());
+            }
+        }
+    }
+    for w in &mut widths {
+        *w = (*w).min(60);
+    }
+
+    let stdout = std::io::stdout();
+    let mut handle = stdout.lock();
+    let sep: String = widths.iter().map(|w| "-".repeat(*w + 2)).collect::<Vec<_>>().join("+");
+
+    write!(handle, "| ")?;
+    for (i, col) in columns.iter().enumerate() {
+        write!(handle, "{:width$} | ", truncate(col, widths[i]), width = widths[i])?;
+    }
+    writeln!(handle)?;
+    writeln!(handle, "|{}|", sep)?;
+
+    for row in rows {
+        write!(handle, "| ")?;
+        for (i, val) in row.iter().enumerate() {
+            let w = widths.get(i).copied().unwrap_or(10);
+            write!(handle, "{:width$} | ", truncate(val, w), width = w)?;
+        }
+        writeln!(handle)?;
+    }
+    writeln!(handle, "{} rows", row_count)?;
+    Ok(())
+}
+
+/// CSV 值转义
+pub fn escape_csv(val: &str) -> String {
+    if val.contains(',') || val.contains('"') || val.contains('\n') {
+        format!("\"{}\"", val.replace('"', "\"\""))
+    } else {
+        val.to_string()
+    }
+}
+
 /// 纯文本格式输出
 fn format_text(content: &ExtractedContent) -> String {
     let mut out = String::new();

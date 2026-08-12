@@ -13,7 +13,8 @@ pub mod connector;
 pub mod oracle;
 pub mod types;
 
-use crate::db::config::BinConfig;
+use crate::config::BinConfig;
+use crate::db::config::DbConnectionConfig;
 use crate::db::connector::DbConnector;
 use crate::db::oracle::OracleConnector;
 use crate::db::types::{DbSummary, QueryResult, TableInfo};
@@ -42,13 +43,14 @@ impl DatabaseManager {
         // connectors.insert("mysql".into(), Box::new(MySQLConnector));
         // connectors.insert("postgres".into(), Box::new(PgConnector));
 
-        info!(db_count = config.db_tool.databases.len(), "Database manager initialized");
+        let db_count = config.db_tool.as_ref().map(|d| d.databases.len()).unwrap_or(0);
+        info!(db_count, "Database manager initialized");
         Ok(Self { config, connectors })
     }
 
     /// 列出所有数据库摘要
     pub fn list_databases(&self) -> Vec<DbSummary> {
-        self.config.summaries()
+        self.config.db_summaries()
     }
 
     /// 执行 SQL 查询
@@ -88,15 +90,14 @@ impl DatabaseManager {
     }
 
     /// 查找数据库配置
-    fn find_database(&self, name: &str) -> Result<&crate::db::config::DbConnectionConfig> {
+    fn find_database(&self, name: &str) -> Result<&DbConnectionConfig> {
         self.config.find_database(name).ok_or_else(|| {
+            let available = self.config.db_tool.as_ref()
+                .map(|d| d.databases.iter().map(|x| x.name.as_str()).collect::<Vec<_>>().join(", "))
+                .unwrap_or_default();
             AiCliError::Config(format!(
                 "Database '{}' not found in config. Available: {}",
-                name,
-                self.config.db_tool.databases.iter()
-                    .map(|d| d.name.as_str())
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                name, available
             ))
         })
     }

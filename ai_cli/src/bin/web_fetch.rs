@@ -6,7 +6,7 @@
 
 use clap::Parser;
 use ai_cli::{OutputFormat, run_fetch};
-use ai_cli::db::config::BinConfig;
+use ai_cli::config::BinConfig;
 use std::path::PathBuf;
 use anyhow::Result;
 use tracing::info;
@@ -60,7 +60,8 @@ async fn main() -> Result<()> {
     // 加载 binconfig.toml 中的 web_fetch 配置
     let proxy_url = BinConfig::load()
         .ok()
-        .and_then(|cfg| cfg.web_fetch.http_proxy)
+        .and_then(|cfg| cfg.web_fetch)
+        .and_then(|w| w.http_proxy)
         .filter(|p| !p.is_empty());
     if proxy_url.is_some() {
         info!("Using proxy from binconfig.toml [web_fetch]");
