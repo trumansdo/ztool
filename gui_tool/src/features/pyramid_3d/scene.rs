@@ -11,7 +11,10 @@ use crate::features::pyramid_3d::scene::camera::Camera;
 
 #[derive(Debug, Clone)]
 pub struct Scene {
-    pub angle: f32,
+    pub angle_x: f32,
+    pub angle_y: f32,
+    pub angle_z: f32,
+    pub scale: f32,
     pub pyramid_shape: PyramidShape,
     pub camera: Camera,
     pub light_color: Color,
@@ -20,7 +23,10 @@ pub struct Scene {
 impl Scene {
     pub fn new() -> Self {
         Scene {
-            angle: 0f32,
+            angle_x: 0f32,
+            angle_y: 0f32,
+            angle_z: 0f32,
+            scale: 0.5f32,
             pyramid_shape: PyramidShape::default(),
             camera: Camera::default(),
             light_color: Color::WHITE,
@@ -35,8 +41,8 @@ impl<Message> Program<Message> for Scene {
 
     fn draw(
         &self,
-        state: &Self::State,
-        cursor: iced::advanced::mouse::Cursor,
+        _state: &Self::State,
+        _cursor: iced::advanced::mouse::Cursor,
         bounds: iced::Rectangle,
     ) -> Self::Primitive {
         PyramidPrimitive::new(vec![self.pyramid_shape], &self.camera, bounds, self.light_color)

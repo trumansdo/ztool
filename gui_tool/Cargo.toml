@@ -9,7 +9,7 @@ iced = { version = "=0.14.0", default-features = false, features = [
     "tokio",
     "advanced",
 ] }
-iced_aw = "0.13.1"
+iced_aw = "0.14"
 native-theme-iced = "0.5.6"
 iced_aksel = "0.3.0"
 iced_modifier = "0.5.1"
