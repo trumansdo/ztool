@@ -1,6 +1,6 @@
 //! Code Action (快速修复: 导包、实现方法、异常处理等)
 
-use crate::lsp::client::LspClient;
+use crate::lsp::client::{lsp_position, LspClient};
 use crate::lsp::transport::LspTransport;
 use anyhow::Result;
 use lsp_types::*;
@@ -18,8 +18,8 @@ pub fn code_action(
             uri: uri.parse()?,
         },
         range: Range {
-            start: Position { line, character },
-            end: Position { line, character },
+            start: lsp_position(line, character),
+            end: lsp_position(line, character),
         },
         context: CodeActionContext {
             diagnostics: vec![],

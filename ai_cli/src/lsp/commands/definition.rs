@@ -6,7 +6,7 @@
 //! 但需要 classpath 完整才能解析跨文件定义。
 //! jdtls 无此限制。
 
-use crate::lsp::client::LspClient;
+use crate::lsp::client::{lsp_position, LspClient};
 use crate::lsp::transport::LspTransport;
 use anyhow::Result;
 use lsp_types::*;
@@ -24,7 +24,7 @@ pub fn goto_definition(
             text_document: TextDocumentIdentifier {
                 uri: uri.parse()?,
             },
-            position: Position { line, character },
+            position: lsp_position(line, character),
         },
         work_done_progress_params: WorkDoneProgressParams::default(),
         partial_result_params: PartialResultParams::default(),

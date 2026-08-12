@@ -8,7 +8,7 @@
 //!
 //! jdtls 无此限制。
 
-use crate::lsp::client::LspClient;
+use crate::lsp::client::{lsp_position, LspClient};
 use crate::lsp::transport::LspTransport;
 use anyhow::Result;
 use lsp_types::*;
@@ -26,7 +26,7 @@ pub fn completion(
             text_document: TextDocumentIdentifier {
                 uri: uri.parse()?,
             },
-            position: Position { line, character },
+            position: lsp_position(line, character),
         },
         context: None,
         work_done_progress_params: WorkDoneProgressParams::default(),

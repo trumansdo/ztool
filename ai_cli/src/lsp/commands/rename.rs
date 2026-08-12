@@ -1,6 +1,6 @@
 //! 重命名符号
 
-use crate::lsp::client::LspClient;
+use crate::lsp::client::{lsp_position, LspClient};
 use crate::lsp::transport::LspTransport;
 use anyhow::Result;
 use lsp_types::*;
@@ -18,7 +18,7 @@ pub fn prepare_rename(
         text_document: TextDocumentIdentifier {
             uri: uri.parse()?,
         },
-        position: Position { line, character },
+        position: lsp_position(line, character),
     };
     client.request("textDocument/prepareRename", &params)
 }
@@ -37,7 +37,7 @@ pub fn rename(
             text_document: TextDocumentIdentifier {
                 uri: uri.parse()?,
             },
-            position: Position { line, character },
+            position: lsp_position(line, character),
         },
         new_name: new_name.to_string(),
         work_done_progress_params: WorkDoneProgressParams::default(),

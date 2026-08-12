@@ -44,6 +44,18 @@ pub fn path_to_uri(path: &Path) -> String {
     }
 }
 
+/// 将 1-based 行列 (AI/CLI 习惯) 转换为 LSP 协议要求的 0-based Position。
+///
+/// 所有 commands 层函数接收 1-based 行列并内部调用本函数转换，
+/// 避免 1-based 参数被原样发送导致请求位置偏移 (+1, +1) 的 bug。
+/// `saturating_sub(1)` 保证输入 0 时输出 0 (LSP 最小合法值)，不 panic。
+pub fn lsp_position(line: u32, character: u32) -> Position {
+    Position {
+        line: line.saturating_sub(1),
+        character: character.saturating_sub(1),
+    }
+}
+
 /// 类型安全 LSP 客户端
 pub struct LspClient<T: LspTransport> {
     transport: T,
