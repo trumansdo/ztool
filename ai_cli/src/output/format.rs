@@ -74,12 +74,12 @@ fn format_json(content: &ExtractedContent) -> String {
 // 公共格式化工具（db_tool / excel_tool 共用）
 // ============================================================
 
-/// 截断字符串到指定宽度
+/// 截断字符串到指定宽度（按字符而非字节）
 pub fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    if s.chars().count() <= max_len {
         s.to_string()
     } else {
-        format!("{}…", &s[..max_len - 1])
+        format!("{}…", s.chars().take(max_len - 1).collect::<String>())
     }
 }
 

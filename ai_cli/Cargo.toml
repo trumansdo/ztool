@@ -28,11 +28,14 @@ oracle = "0.6"
 calamine = "0.36"
 rust_xlsxwriter = "0.96"
 umya-spreadsheet = "~2.3"
+office_oxide = "0.1"
+docx-rs = "0.4"
+infer = "0"
 xcap = "0.6"
 image = "0.25"
 walkdir = "2"
 regex = "1"
-grep = "0.4"  # cargo install ripgrep 官方库 (BurntSushi/ripgrep)
+grep = "0.4"  # ripgrep 官方库 (BurntSushi/ripgrep)
 
 # 二进制目标
 [[bin]]
@@ -48,9 +51,9 @@ name = "db_tool"
 path = "src/bin/db_tool.rs"
 
 [[bin]]
-name = "excel_tool"
-path = "src/bin/excel_tool.rs"
-
-[[bin]]
 name = "lsp_tool"
 path = "src/bin/lsp_tool.rs"
+
+[[bin]]
+name = "office_tool"
+path = "src/bin/office_tool.rs"

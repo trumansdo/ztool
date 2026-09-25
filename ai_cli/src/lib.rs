@@ -21,6 +21,7 @@
 //!   │   ├── oracle    → Oracle 实现
 //!   │   └── types     → 共享类型定义
 //!   ├── excel     → Excel 读写
+//!   ├── doc       → Word 文档读写
 //!   ├── lsp       → LSP 客户端
 //!   └── error     → 统一错误类型
 //! ```
@@ -31,6 +32,7 @@ pub mod output;
 pub mod error;
 pub mod db;
 pub mod excel;
+pub mod doc;
 pub mod lsp;
 
 pub use output::format::OutputFormat;
