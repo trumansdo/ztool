@@ -27,6 +27,7 @@ pub mod json_fmt;
 pub mod music_wave;
 pub mod net_capture;
 pub mod net_port_scan;
+pub mod prompt_gen;
 pub mod theme;
 pub mod ui_libs;
 pub mod pyramid_3d;

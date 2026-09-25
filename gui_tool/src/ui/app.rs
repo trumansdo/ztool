@@ -4,6 +4,7 @@ use crate::features::json_fmt::JsonFormatter;
 use crate::features::music_wave::MusicWave;
 use crate::features::net_capture::PacketCapture;
 use crate::features::net_port_scan::NetScanner;
+use crate::features::prompt_gen::PromptGenerator;
 use crate::features::pyramid_3d::Pyramid;
 use crate::features::ui_libs::UiLibs;
 use crate::ui::widgets::menu::{MenuBar, MenuTree};
@@ -21,6 +22,7 @@ pub struct App {
     pub ui_libs: UiLibs,
     pub pyramid: Pyramid,
     pub music_wave: MusicWave,
+    pub prompt_gen: PromptGenerator,
 }
 
 impl App {
@@ -31,7 +33,13 @@ impl App {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::TabSelected(tab) => {
+                let prev = self.selected_tab;
                 self.selected_tab = tab;
+                // 首次切换到提示词生成时触发加载
+                if tab == Tab::PromptGen && prev != Tab::PromptGen {
+                    return crate::features::prompt_gen::update(&mut self.prompt_gen, crate::features::prompt_gen::Msg::Load)
+                        .map(Message::PromptGen);
+                }
                 Task::none()
             }
             Message::JsonFmt(m) => {
@@ -49,6 +57,9 @@ impl App {
             }
             Message::MusicWave(m) => {
                 crate::features::music_wave::update(&mut self.music_wave, m).map(Message::MusicWave)
+            }
+            Message::PromptGen(m) => {
+                crate::features::prompt_gen::update(&mut self.prompt_gen, m).map(Message::PromptGen)
             }
             _ => Task::none(),
         }
@@ -81,6 +92,10 @@ impl App {
                 "音乐波形",
                 vec![MenuTree::item("音阶波形", Message::TabSelected(Tab::MusicWave))],
             ),
+            MenuTree::folder(
+                "AI工具",
+                vec![MenuTree::item("提示词生成", Message::TabSelected(Tab::PromptGen))],
+            ),
         ]);
 
         // 顶部菜单栏容器（深色底，撑满整行宽度）
@@ -109,6 +124,9 @@ impl App {
             }
             Tab::MusicWave => {
                 crate::features::music_wave::view(&self.music_wave).map(Message::MusicWave)
+            }
+            Tab::PromptGen => {
+                crate::features::prompt_gen::view(&self.prompt_gen).map(Message::PromptGen)
             }
         };
 

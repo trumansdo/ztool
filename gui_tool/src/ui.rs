@@ -68,6 +68,7 @@ pub use app::App;
 
 use anyhow::Result;
 use iced::{Element, Subscription, Task, window};
+use iced::window::icon;
 
 /// 标签页枚举 —— 定义应用中的所有功能页面
 ///
@@ -87,8 +88,7 @@ use iced::{Element, Subscription, Task, window};
 /// 当前 enum 无携带数据，全部变体都是 Copy。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Tab {
-    /// JSON 格式化工具（默认页面）
-    #[default]
+    /// JSON 格式化工具
     JsonFmt,
     /// 端口扫描工具，基于 rayon 并行扫描
     NetPortScan,
@@ -98,6 +98,9 @@ pub enum Tab {
     UiLibs,
     Pyramid3d,
     MusicWave,
+    /// AI提示词生成器（默认页面）
+    #[default]
+    PromptGen,
 }
 
 // `impl From<Tab> for String`: 实现类型转换 —— 从 Tab 转为 String
@@ -118,6 +121,7 @@ impl From<Tab> for String {
             Tab::UiLibs => "ui_libs".to_string(),
             Tab::Pyramid3d => "pyramid_3d".to_string(),
             Tab::MusicWave => "music_wave".to_string(),
+            Tab::PromptGen => "prompt_gen".to_string(),
         }
     }
 }
@@ -142,6 +146,7 @@ impl Tab {
             "ui_libs" => Some(Tab::UiLibs),
             "pyramid_3d" => Some(Tab::Pyramid3d),
             "music_wave" => Some(Tab::MusicWave),
+            "prompt_gen" => Some(Tab::PromptGen),
             _ => None,
         }
     }
@@ -178,6 +183,7 @@ pub enum Message {
     UiLibs(crate::features::ui_libs::Msg),
     ShaderPyramid(crate::features::pyramid_3d::Msg),
     MusicWave(crate::features::music_wave::Msg),
+    PromptGen(crate::features::prompt_gen::Msg),
     /// 窗口帧更新事件
     Tick(Instant),
 }
@@ -190,7 +196,12 @@ pub enum Message {
 /// 初始 Task 可用于启动后台任务（如加载文件、发起网络请求）。
 /// 这里返回 `Task::none()`，表示没有初始异步任务。
 fn new() -> (App, Task<Message>) {
-    (App::new(), Task::none())
+    (
+        App::new(),
+        Task::done(Message::PromptGen(
+            crate::features::prompt_gen::Msg::Load,
+        )),
+    )
 }
 
 /// 处理消息，更新应用状态
@@ -283,10 +294,60 @@ pub fn run() -> Result<()> {
             min_size: Some(iced::Size::new(800.0, 600.0)),
             // 允许用户拖拽窗口边缘调整大小
             resizable: true,
+            icon: build_icon(),
             // `..default()` 将其他字段（如 position, decorations 等）设置为 iced 默认值
             ..iced::window::Settings::default()
         })
         .subscription(subscription)
         .run()?;
     Ok(())
+}
+
+/// 生成 32×32 的字母 "Z" 窗口图标
+///
+/// 白色 Z 字在深色半透明背景上，RGBA 格式。
+fn build_icon() -> Option<icon::Icon> {
+    const SIZE: u32 = 32;
+    let mut pixels = vec![0u8; (SIZE * SIZE * 4) as usize];
+
+    // 绘制 Z 字：上横、对角线、下横
+    let top_y = 5;
+    let bot_y = 26;
+    let left_x = 5;
+    let right_x = 26;
+
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let idx = ((y * SIZE + x) * 4) as usize;
+            let on_z = if y >= top_y && y <= top_y + 3 && x >= left_x && x <= right_x {
+                // 上横线
+                true
+            } else if y >= bot_y && y <= bot_y + 3 && x >= left_x && x <= right_x {
+                // 下横线
+                true
+            } else if y > top_y + 3 && y < bot_y {
+                // 对角线区域
+                let progress = (y - top_y - 3) as f32 / (bot_y - top_y - 3) as f32;
+                let diag_x = right_x as f32 - progress * (right_x - left_x) as f32;
+                let half_w = 2.5;
+                (x as f32 - diag_x).abs() <= half_w
+            } else {
+                false
+            };
+
+            if on_z {
+                pixels[idx] = 220;     // R
+                pixels[idx + 1] = 230; // G
+                pixels[idx + 2] = 255; // B
+                pixels[idx + 3] = 255; // A
+            } else {
+                pixels[idx] = 18;
+                pixels[idx + 1] = 18;
+                pixels[idx + 2] = 30;
+                pixels[idx + 3] = 220;
+            }
+        }
+    }
+
+    icon::from_rgba(pixels, SIZE, SIZE).ok()
 }
