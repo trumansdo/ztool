@@ -36,6 +36,7 @@ image = "0.25"
 walkdir = "2"
 regex = "1"
 grep = "0.4"  # ripgrep 官方库 (BurntSushi/ripgrep)
+pdf-extract = "0.8"
 
 # 二进制目标
 [[bin]]
@@ -57,3 +58,7 @@ path = "src/bin/lsp_tool.rs"
 [[bin]]
 name = "office_tool"
 path = "src/bin/office_tool.rs"
+
+[[bin]]
+name = "pdf_tool"
+path = "src/bin/pdf_tool.rs"
