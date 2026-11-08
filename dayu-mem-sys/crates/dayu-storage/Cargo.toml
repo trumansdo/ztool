@@ -1,0 +1,27 @@
+[package]
+name = "dayu-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+test-support = ["dep:tempfile", "dep:dayu-testkit"]
+
+[dependencies]
+dayu-domain = { path = "../dayu-domain" }
+async-trait.workspace = true
+chrono.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+triviumdb = "0.9.0"
+tempfile = { version = "3", optional = true }
+dayu-testkit = { path = "../dayu-testkit", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+dayu-testkit = { path = "../dayu-testkit" }
+proptest = "1.12.0"
+tokio.workspace = true

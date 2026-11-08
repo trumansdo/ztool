@@ -1,0 +1,29 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# 本仓库是可执行程序（napi + cli），锁文件必须入库（覆盖父级 ztool/.gitignore）
+!Cargo.lock
+
+# 本地数据与日志
+*.tdb
+*.tdb.*
+logs/
+
+# 测试产物（db / 日志 / 指标 / 配置 / 脚本，整体不入库）
+test/
+
+# napi 构建产物
+*.node
+*.dll
+*.pdb
+*.so
+*.dylib
+
+# 模型与运行时（体积大，不入库）
+models/
+
+# 编辑器
+.idea/
+.vscode/
+*.swp

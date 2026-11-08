@@ -1,0 +1,19 @@
+[package]
+name = "dayu-judge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+onnx = ["ort", "tokenizers"]
+
+[dependencies]
+dayu-domain = { path = "../dayu-domain" }
+async-trait.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+ort = { workspace = true, optional = true }
+tokenizers = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

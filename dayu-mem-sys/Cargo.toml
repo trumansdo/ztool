@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/dayu-domain",
+    "crates/dayu-flow",
+    "crates/dayu-judge",
+    "crates/dayu-storage",
+    "crates/dayu-embedding",
+    "crates/dayu-config",
+    "crates/dayu-observability",
+    "crates/dayu-core",
+    "crates/dayu-napi",
+    "crates/dayu-cli",
+    "crates/dayu-testkit",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/ztool/dayu-mem-sys"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-appender = "0.2"
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt", "macros"] }
+ort = { version = "2.0.0-rc.15", features = ["load-dynamic"] }
+tokenizers = "0.21"
+ndarray = "0.17"

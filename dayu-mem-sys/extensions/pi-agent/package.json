@@ -1,0 +1,19 @@
+{
+  "name": "@dayu-mem-sys/pi-agent-extension",
+  "version": "0.1.0",
+  "description": "大禹水利记忆网络 pi-agent 适配层 — 记忆召回、注入、归档",
+  "type": "module",
+  "main": "./src/index.ts",
+  "files": ["src/", "README.md"],
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "keywords": ["pi-agent", "extension", "memory", "dayu", "rag"],
+  "license": "MIT"
+}

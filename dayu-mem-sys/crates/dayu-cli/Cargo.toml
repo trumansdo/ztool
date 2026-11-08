@@ -1,0 +1,18 @@
+[package]
+name = "dayu-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dayu-core = { path = "../dayu-core" }
+dayu-domain = { path = "../dayu-domain" }
+dayu-storage = { path = "../dayu-storage" }
+dayu-config = { path = "../dayu-config" }
+tokio = { workspace = true, features = ["rt", "macros"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+serde_json.workspace = true
+chrono.workspace = true

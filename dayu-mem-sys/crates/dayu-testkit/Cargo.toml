@@ -1,0 +1,12 @@
+[package]
+name = "dayu-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dayu-domain = { path = "../dayu-domain" }
+dayu-embedding = { path = "../dayu-embedding" }
+async-trait.workspace = true
+uuid.workspace = true
+chrono.workspace = true

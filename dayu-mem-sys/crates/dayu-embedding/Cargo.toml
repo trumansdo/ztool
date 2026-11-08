@@ -1,0 +1,22 @@
+[package]
+name = "dayu-embedding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dayu-domain = { path = "../dayu-domain" }
+tracing.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+rand = "0.8"
+ort = { workspace = true, optional = true }
+tokenizers = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
+
+[features]
+default = []
+onnx = ["ort", "tokenizers", "ndarray"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }

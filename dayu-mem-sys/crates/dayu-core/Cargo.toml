@@ -1,0 +1,26 @@
+[package]
+name = "dayu-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dayu-domain = { path = "../dayu-domain" }
+dayu-flow = { path = "../dayu-flow" }
+dayu-judge = { path = "../dayu-judge" }
+dayu-storage = { path = "../dayu-storage" }
+dayu-embedding = { path = "../dayu-embedding" }
+dayu-config = { path = "../dayu-config" }
+dayu-observability = { path = "../dayu-observability" }
+chrono.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+
+[features]
+default = []
+onnx = ["dayu-embedding/onnx"]
+
+[dev-dependencies]
+dayu-storage = { path = "../dayu-storage", features = ["test-support"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
+dayu-testkit = { path = "../dayu-testkit" }

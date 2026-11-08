@@ -1,0 +1,23 @@
+[package]
+name = "dayu-flow"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dayu-domain = { path = "../dayu-domain" }
+dayu-config = { path = "../dayu-config" }
+dayu-observability = { path = "../dayu-observability" }
+tracing.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+dayu-storage = { path = "../dayu-storage", features = ["test-support"] }
+dayu-testkit = { path = "../dayu-testkit" }
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio = { workspace = true, features = ["time"] }
+proptest = "1.12.0"
+
+[[bench]]
+name = "flow_bench"
+harness = false

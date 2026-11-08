@@ -1,0 +1,16 @@
+[package]
+name = "dayu-observability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dayu-domain = { path = "../dayu-domain" }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+dayu-testkit = { path = "../dayu-testkit" }

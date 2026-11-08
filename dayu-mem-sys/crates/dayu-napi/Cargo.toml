@@ -1,0 +1,29 @@
+[package]
+name = "dayu-napi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "3", features = ["tokio_rt", "async"] }
+napi-derive = "3"
+dayu-core = { path = "../dayu-core" }
+dayu-domain = { path = "../dayu-domain" }
+dayu-storage = { path = "../dayu-storage" }
+dayu-observability = { path = "../dayu-observability" }
+tracing.workspace = true
+once_cell = "1"
+tokio = { workspace = true, features = ["rt", "macros"] }
+toml = "0.8"
+chrono.workspace = true
+
+[build-dependencies]
+napi-build = "2"
+
+[dev-dependencies]
+tempfile = "3"
+dayu-storage = { path = "../dayu-storage", features = ["test-support"] }
+dayu-testkit = { path = "../dayu-testkit" }
