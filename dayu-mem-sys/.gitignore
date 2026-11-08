@@ -8,7 +8,9 @@ Cargo.lock.bak
 logs/
 
 # 测试产物（db / 日志 / 指标 / 配置 / 脚本，整体不入库）
-test/
+test/*
+# 但测试进度文档要入库
+!test/PROGRESS.md
 
 # napi 构建产物
 *.node
