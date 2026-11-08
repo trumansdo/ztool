@@ -86,6 +86,10 @@ impl StorageBackend for TestStore {
         self.opened().list_balls(status).await
     }
 
+    async fn list_pipes(&self) -> Result<Vec<Pipe>, StorageError> {
+        self.opened().list_pipes().await
+    }
+
     async fn begin_transaction(&self) -> Result<Box<dyn StorageTx>, StorageError> {
         self.opened().begin_transaction().await
     }

@@ -51,6 +51,12 @@ pub trait StorageBackend: Send + Sync {
     /// 归档扫描需要遍历全部活跃球；检索路径不用它，用 `search_by_embedding`。
     async fn list_balls(&self, status: Option<BallStatus>) -> Result<Vec<Ball>, StorageError>;
 
+    /// 列出全部管道
+    ///
+    /// 用于观测与对照实验：管道粗细是否随「被走通」而增长，
+    /// 是「联想被强化」最直接的证据，光看球的大小看不出来。
+    async fn list_pipes(&self) -> Result<Vec<Pipe>, StorageError>;
+
     /// 开启写事务
     async fn begin_transaction(&self) -> Result<Box<dyn StorageTx>, StorageError>;
 }

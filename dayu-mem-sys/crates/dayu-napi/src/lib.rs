@@ -67,6 +67,48 @@ pub struct InjectionBlockDto {
 pub struct RecallResultDto {
     pub qid: String,
     pub blocks: Vec<InjectionBlockDto>,
+    /// 本轮流动与结算的统计量
+    ///
+    /// 冒烟与对照实验靠它判断「水走了多远、被挡了几条、强化了几个」，
+    /// 不必再去解析日志或指标文件。
+    pub stats: RecallStatsDto,
+}
+
+/// 单轮回忆的统计量
+#[napi(object)]
+#[derive(Clone)]
+pub struct RecallStatsDto {
+    /// 起始球数量
+    pub start_count: u32,
+    /// 被点亮的球数量
+    pub lit_count: u32,
+    /// 拿到路径强化的球数量
+    pub strengthened_count: u32,
+    /// 只拿到最低强化值的印象球数量
+    pub impression_count: u32,
+    /// 生成的注入块数量
+    pub block_count: u32,
+    /// 注入的总 token 数
+    pub token_count: u32,
+    /// 被阻力挡住的管道数量
+    pub blocked_pipe_count: u32,
+    /// 本轮耗时（毫秒）
+    pub elapsed_ms: u32,
+}
+
+impl From<dayu_core::RecallStats> for RecallStatsDto {
+    fn from(s: dayu_core::RecallStats) -> Self {
+        Self {
+            start_count: s.start_count as u32,
+            lit_count: s.lit_count as u32,
+            strengthened_count: s.strengthened_count as u32,
+            impression_count: s.impression_count as u32,
+            block_count: s.block_count as u32,
+            token_count: s.token_count as u32,
+            blocked_pipe_count: s.blocked_pipe_count as u32,
+            elapsed_ms: s.elapsed_ms as u32,
+        }
+    }
 }
 
 /// 判别结果 DTO
@@ -91,6 +133,21 @@ pub struct BallDto {
     pub text: String,
     pub lit_count: f64,
     pub last_watered: String,
+}
+
+/// 管道 DTO
+#[napi(object)]
+#[derive(Clone)]
+pub struct PipeDto {
+    pub id: u32,
+    pub a: u32,
+    pub b: u32,
+    /// 管道粗细（A↔B 共享）
+    pub thickness: f64,
+    /// 管道稳定度（天）
+    pub stability: f64,
+    /// 被阻挡次数（结算时累加，随时间衰减）
+    pub blocked_count: f64,
 }
 
 /// 统计 DTO
@@ -207,6 +264,19 @@ pub fn init(config_toml: String, db_path: Option<String>) -> napi::Result<()> {
     Ok(())
 }
 
+/// 关闭当前实例：释放存储与嵌入后端，允许再次 `init`
+///
+/// 用途：同一进程内跑多组对照实验（不同配置各开一个库）。
+/// 不调用也能重新 `init`，但旧实例的存储句柄与 ONNX 会话会一直占着。
+#[napi]
+pub fn shutdown() -> napi::Result<()> {
+    let mut guard = CORE
+        .lock()
+        .map_err(|e| Error::new(Status::GenericFailure, format!("[CORE_LOCK] {e}")))?;
+    *guard = None;
+    Ok(())
+}
+
 /// 回忆：文本查询 → 注入块列表
 ///
 /// `qid` 省略时由本系统生成，并在返回值里带回。
@@ -226,6 +296,7 @@ pub async fn recall(
     Ok(RecallResultDto {
         qid: output.qid.0,
         blocks: output.injection_blocks.into_iter().map(to_block_dto).collect(),
+        stats: output.stats.into(),
     })
 }
 
@@ -250,6 +321,7 @@ pub async fn recall_by_embedding(
     Ok(RecallResultDto {
         qid: output.qid.0,
         blocks: output.injection_blocks.into_iter().map(to_block_dto).collect(),
+        stats: output.stats.into(),
     })
 }
 
@@ -275,6 +347,7 @@ pub async fn recall_multi(
     Ok(RecallResultDto {
         qid: output.qid.0,
         blocks: output.injection_blocks.into_iter().map(to_block_dto).collect(),
+        stats: output.stats.into(),
     })
 }
 
@@ -310,6 +383,7 @@ pub async fn recall_multi_by_text(
     Ok(RecallResultDto {
         qid: output.qid.0,
         blocks: output.injection_blocks.into_iter().map(to_block_dto).collect(),
+        stats: output.stats.into(),
     })
 }
 
@@ -429,6 +503,30 @@ pub async fn list_balls(status: Option<String>) -> napi::Result<Vec<BallDto>> {
         .await
         .map_err(|e| Error::new(Status::GenericFailure, format!("[LIST_BALLS] {e}")))?;
     Ok(balls.iter().map(to_ball_dto).collect())
+}
+
+/// 列出全部管道
+///
+/// 管道粗细是否随「被走通」而增长，是「联想被强化」最直接的证据。
+#[napi]
+pub async fn list_pipes() -> napi::Result<Vec<PipeDto>> {
+    let st = state()?;
+    let pipes = st
+        .core
+        .list_pipes(&st.storage)
+        .await
+        .map_err(|e| Error::new(Status::GenericFailure, format!("[LIST_PIPES] {e}")))?;
+    Ok(pipes
+        .iter()
+        .map(|p| PipeDto {
+            id: p.id.0 as u32,
+            a: p.a.0 as u32,
+            b: p.b.0 as u32,
+            thickness: p.pipe_base_thickness,
+            stability: p.pipe_stability,
+            blocked_count: p.blocked_pass_count_stored as f64,
+        })
+        .collect())
 }
 
 /// 改球状态：active / contested / archived / deleted

@@ -305,6 +305,36 @@ impl StorageBackend for TriviumStorage {
         Ok(out)
     }
 
+    async fn list_pipes(&self) -> Result<Vec<Pipe>, StorageError> {
+        let db = self.lock()?;
+        let ids = db
+            .all_node_ids()
+            .map_err(|e| StorageError::Io(format!("[TRIVIUM_IDS] {e}")))?;
+        // 无向边在两端各存一条，按 (min,max) 去重
+        let mut seen: HashSet<(u64, u64)> = HashSet::new();
+        let mut out = Vec::new();
+        for id in ids {
+            let edges = db
+                .get_edges(id)
+                .map_err(|e| StorageError::Io(format!("[TRIVIUM_EDGES] {e}")))?;
+            for e in edges.iter().filter(|e| e.label == PIPE_LABEL) {
+                let key = if id < e.target_id {
+                    (id, e.target_id)
+                } else {
+                    (e.target_id, id)
+                };
+                if !seen.insert(key) {
+                    continue;
+                }
+                if let Some(pipe) = edge_to_pipe(e.weight, e.metadata.clone()) {
+                    out.push(pipe);
+                }
+            }
+        }
+        out.sort_by_key(|p| p.id.0);
+        Ok(out)
+    }
+
     async fn begin_transaction(&self) -> Result<Box<dyn StorageTx>, StorageError> {
         Ok(Box::new(TriviumTx {
             db: Arc::clone(&self.db),
@@ -355,6 +385,9 @@ impl StorageTx for TriviumTx {
         let mut updated = ball;
         updated.ball_stored_size = (effective + delta).clamp(0.0, updated.ball_size_ceiling);
         updated.last_watered = now;
+        // 被注水即计一次点亮：`lit_count` 是「这条记忆被想起过多少次」，
+        // 稳定性增长与归档判定都依赖它，漏记会让 S 永远停在初始值。
+        updated.lit_count = updated.lit_count.saturating_add(1);
         self.dirty_balls.insert(id, updated);
         Ok(())
     }

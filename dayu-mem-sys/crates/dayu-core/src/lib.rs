@@ -627,6 +627,14 @@ impl DayuCore {
         Ok(storage.list_balls(status).await?)
     }
 
+    /// 列出全部管道（观测与对照实验用）
+    pub async fn list_pipes(
+        &self,
+        storage: &dyn StorageBackend,
+    ) -> Result<Vec<Pipe>, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(storage.list_pipes().await?)
+    }
+
     /// 改球状态（归档 / 唤醒 / 标记争议 / 软删）
     pub async fn set_ball_status(
         &self,
