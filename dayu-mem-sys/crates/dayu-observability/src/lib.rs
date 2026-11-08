@@ -42,6 +42,12 @@ pub const METRIC_INJECTION_TOKEN_USED: &str = "injection_token_used";
 /// 点亮球数量
 pub const METRIC_LIT_BALL_COUNT: &str = "lit_ball_count";
 
+/// 被阻力挡住的管道数量
+///
+/// 与 `lit_ball_count` 对照看：两者之和反映「水走到了多少条边、其中多少条过不去」。
+/// 没有这个量，就无法判断扩散停滞是「水不够」还是「压根没往外流」。
+pub const METRIC_BLOCKED_PIPE_COUNT: &str = "blocked_pipe_count";
+
 /// 结算强化球数量
 pub const METRIC_REINFORCED_BALL_COUNT: &str = "reinforced_ball_count";
 

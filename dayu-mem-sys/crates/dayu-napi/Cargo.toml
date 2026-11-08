@@ -7,6 +7,12 @@ license.workspace = true
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+default = []
+# 启用 ONNX Runtime：init 时按 config 的 embedding_model_path 加载真实嵌入模型，
+# 未配置或加载失败时回退到 MockEmbeddingBackend
+onnx = ["dayu-core/onnx", "dayu-embedding/onnx"]
+
 [dependencies]
 napi = { version = "3", features = ["tokio_rt", "async"] }
 napi-derive = "3"
@@ -14,6 +20,7 @@ dayu-core = { path = "../dayu-core" }
 dayu-domain = { path = "../dayu-domain" }
 dayu-storage = { path = "../dayu-storage" }
 dayu-observability = { path = "../dayu-observability" }
+dayu-embedding = { path = "../dayu-embedding", default-features = false }
 tracing.workspace = true
 once_cell = "1"
 tokio = { workspace = true, features = ["rt", "macros"] }

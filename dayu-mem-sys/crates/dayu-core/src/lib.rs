@@ -170,6 +170,17 @@ impl DayuCore {
     }
 
     /// 当前嵌入后端的实际维度（运行时动态值）
+    /// 用当前嵌入后端把文本转成向量
+    ///
+    /// 调用方已有向量时不必用本方法；没有时（例如 napi 只拿到文本）由本系统嵌入，
+    /// 保证「配了模型就用模型、没配就用 mock」这条链路只有一处实现。
+    pub async fn embed_text(&self, text: &str) -> Result<Vec<f32>, CoreError> {
+        self.embedding_backend
+            .embed(text)
+            .await
+            .map_err(CoreError::Embedding)
+    }
+
     pub fn embedding_dimension(&self) -> usize {
         self.embedding_backend.dimension()
     }
@@ -216,8 +227,8 @@ impl DayuCore {
 
     /// 尝试加载 ONNX 判别器后端（从 config 读取路径），失败时回退
     ///
-    /// 仅在 `onnx` feature 启用时可用。
-    #[cfg(feature = "onnx")]
+    /// 仅在 `judge-onnx` feature 启用时可用（`dayu-judge` 的 ONNX 实现尚未对齐 ort 2.0）。
+    #[cfg(feature = "judge-onnx")]
     pub fn with_ort_judge(mut self) -> Self {
         let model_path = std::path::Path::new(&self.config.embedding_model_path);
         let tokenizer_path = std::path::Path::new(&self.config.embedding_tokenizer_path);

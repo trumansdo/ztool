@@ -686,6 +686,7 @@ dependencies = [
  "chrono",
  "dayu-core",
  "dayu-domain",
+ "dayu-embedding",
  "dayu-observability",
  "dayu-storage",
  "dayu-testkit",

@@ -172,8 +172,12 @@ pub fn init(config_toml: String, db_path: Option<String>) -> napi::Result<()> {
     let path = db_path
         .or_else(|| config.db_path.clone())
         .unwrap_or_else(|| "dayu-mem.tdb".to_string());
-    let storage = TriviumStorage::new(&path)
-        .map_err(|e| Error::new(Status::GenericFailure, format!("[STORAGE_OPEN] {e}")))?;
+
+    let config = Arc::new(config);
+    let core = DayuCore::new(Arc::clone(&config));
+    // 配了模型路径就用真实模型；没配或加载失败时 with_ort_embedding 内部回退到 mock
+    #[cfg(feature = "onnx")]
+    let core = core.with_ort_embedding();
 
     // 日志初始化失败不阻断主流程：可观测性是增强，不是前提。
     // AlreadyInitialized 说明已有 subscriber（例如重复调 init），直接沿用。
@@ -190,7 +194,11 @@ pub fn init(config_toml: String, db_path: Option<String>) -> napi::Result<()> {
         None
     });
 
-    let core = DayuCore::new(Arc::new(config));
+    // 存储维度跟随后端实际维度：模型 512 就开 512 的库，
+    // 库已存在且维度不同时由 TriviumDB 拒绝打开（防止混用两套向量）。
+    let dim = core.embedding_dimension();
+    let storage = TriviumStorage::with_dim(&path, dim)
+        .map_err(|e| Error::new(Status::GenericFailure, format!("[STORAGE_OPEN] {e}")))?;
 
     let mut guard = CORE
         .lock()
@@ -270,6 +278,41 @@ pub async fn recall_multi(
     })
 }
 
+/// 多输入源回忆（文本版）：每个文本各自嵌入后一起注水
+///
+/// 与 `recallMulti` 的区别只在入口：`recallMulti` 接受已算好的向量，
+/// 本接口接受文本，嵌入交给本系统（配了模型走模型，没配走 mock）。
+#[napi]
+pub async fn recall_multi_by_text(
+    query_texts: Vec<String>,
+    significance: f64,
+    qid: Option<String>,
+) -> napi::Result<RecallResultDto> {
+    let st = state()?;
+    let qid = QueryId::from_input(qid.as_deref());
+    let span = tracing::info_span!("recall_multi", qid = %qid, sources = query_texts.len());
+    let mut owned: Vec<Vec<f32>> = Vec::with_capacity(query_texts.len());
+    for text in &query_texts {
+        let emb = st
+            .core
+            .embed_text(text)
+            .await
+            .map_err(|e| Error::new(Status::GenericFailure, format!("[EMBED] {e}")))?;
+        owned.push(emb);
+    }
+    let refs: Vec<&[f32]> = owned.iter().map(|v| v.as_slice()).collect();
+    let output = st
+        .core
+        .recall_multi_with_qid(&st.storage, &refs, significance, qid)
+        .instrument(span)
+        .await
+        .map_err(|e| Error::new(Status::GenericFailure, format!("[RECALL_MULTI] {e}")))?;
+    Ok(RecallResultDto {
+        qid: output.qid.0,
+        blocks: output.injection_blocks.into_iter().map(to_block_dto).collect(),
+    })
+}
+
 /// 判别轮次：判断候选片段是否产生新球
 #[napi]
 pub async fn judge_turn(
@@ -326,14 +369,22 @@ pub async fn judge_turn(
 #[napi]
 pub async fn create_ball(
     content: String,
-    embedding: Vec<f64>,
+    embedding: Option<Vec<f64>>,
     size: f64,
     qid: Option<String>,
 ) -> napi::Result<u32> {
     let st = state()?;
     let qid = QueryId::from_input(qid.as_deref());
     let span = tracing::info_span!("create_ball", qid = %qid, size);
-    let emb: Vec<f32> = embedding.into_iter().map(|x| x as f32).collect();
+    // 传了向量就用，没传就由本系统嵌入（配了模型走模型，没配走 mock）
+    let emb: Vec<f32> = match embedding {
+        Some(v) => v.into_iter().map(|x| x as f32).collect(),
+        None => st
+            .core
+            .embed_text(&content)
+            .await
+            .map_err(|e| Error::new(Status::GenericFailure, format!("[EMBED] {e}")))?,
+    };
     let id = st
         .core
         .create_ball(&st.storage, &content, &emb, size)

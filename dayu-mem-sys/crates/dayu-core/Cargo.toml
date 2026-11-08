@@ -19,6 +19,9 @@ thiserror.workspace = true
 [features]
 default = []
 onnx = ["dayu-embedding/onnx"]
+# 判别器后端单独开关：`dayu-judge` 的 ONNX 实现尚未对齐 ort 2.0 API，
+# 在它修好之前不并进 `onnx`，否则嵌入能用、判别拖垮整个构建。
+judge-onnx = ["onnx", "dayu-judge/onnx"]
 
 [dev-dependencies]
 dayu-storage = { path = "../dayu-storage", features = ["test-support"] }

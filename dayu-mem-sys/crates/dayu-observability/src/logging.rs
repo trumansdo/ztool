@@ -50,11 +50,12 @@ pub fn init(log_dir: &str, log_level: &str, log_retention_days: usize, metrics_e
     std::fs::create_dir_all(dir)?;
 
     let level = log_level.trim().to_ascii_lowercase();
-    // 用户没写定向规则时，压掉底层存储引擎的刷屏日志（每次 flush 都打 INFO）
+    // 用户没写定向规则时，压掉底层引擎的刷屏日志（triviumdb 每次 flush 打 INFO，
+    // ort 加载模型时打几十行图优化日志）
     let directive = if level.contains('=') {
         level
     } else {
-        format!("{level},triviumdb=warn")
+        format!("{level},triviumdb=warn,ort=warn")
     };
     let filter = EnvFilter::try_new(&directive).unwrap_or_else(|_| EnvFilter::new("info"));
 

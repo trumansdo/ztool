@@ -11,8 +11,8 @@ use dayu_domain::traits::*;
 use dayu_domain::types::*;
 use dayu_domain::error::*;
 use dayu_observability::{
-    MetricsRecorder, METRIC_FLOW_LOSS_BY_PIPE_WEIGHT, METRIC_FLOW_SUPPLEMENT_BY_PIPE_WEIGHT,
-    METRIC_FLOW_TRIGGER_RATE, METRIC_LIT_BALL_COUNT,
+    MetricsRecorder, METRIC_BLOCKED_PIPE_COUNT, METRIC_FLOW_LOSS_BY_PIPE_WEIGHT,
+    METRIC_FLOW_SUPPLEMENT_BY_PIPE_WEIGHT, METRIC_FLOW_TRIGGER_RATE, METRIC_LIT_BALL_COUNT,
 };
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -552,6 +552,7 @@ impl FlowEngine {
         if let Some(ref m) = self.metrics {
             m.record_counter(METRIC_FLOW_TRIGGER_RATE, 1, &[("status", "success")]);
             m.record_gauge(METRIC_LIT_BALL_COUNT, lit_balls.len() as f64, &[]);
+            m.record_gauge(METRIC_BLOCKED_PIPE_COUNT, blocked_pipes.len() as f64, &[]);
         }
 
         (lit_balls, blocked_pipes)
