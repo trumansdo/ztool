@@ -2,9 +2,6 @@
 **/*.rs.bk
 Cargo.lock.bak
 
-# 本仓库是可执行程序（napi + cli），锁文件必须入库（覆盖父级 ztool/.gitignore）
-!Cargo.lock
-
 # 本地数据与日志
 *.tdb
 *.tdb.*

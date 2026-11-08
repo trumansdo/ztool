@@ -1,7 +1,6 @@
 target/
 .vscode/
 third-party/
-Cargo.lock
 
 # MemPalace per-project files (issue #185)
 mempalace.yaml
