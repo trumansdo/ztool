@@ -28,7 +28,7 @@ impl PyramidPrimitive {
         Self {
             pyramid_raws: pyramids
                 .iter()
-                .map(|x| PyramidRaw::from_shape(x))
+                .map(PyramidRaw::from_shape)
                 .collect::<Vec<PyramidRaw>>(),
             uniforms: Uniforms::new(camera, bounds, light_color),
         }
@@ -43,7 +43,7 @@ impl shader::Primitive for PyramidPrimitive {
         pipeline: &mut Self::Pipeline,
         device: &iced::wgpu::Device,
         queue: &iced::wgpu::Queue,
-        bounds: &iced::Rectangle,
+        _bounds: &iced::Rectangle,
         viewport: &shader::Viewport,
     ) {
         // 上传实例数据和 Uniform 数据到 GPU
@@ -67,8 +67,8 @@ impl shader::Primitive for PyramidPrimitive {
         pipeline: &Self::Pipeline,
         encoder: &mut iced::wgpu::CommandEncoder,
         target: &iced::wgpu::TextureView,
-        clip_bounds: &iced::Rectangle<u32>,
+        _clip_bounds: &iced::Rectangle<u32>,
     ) {
-        pipeline.render(encoder, target, clip_bounds);
+        pipeline.render(encoder, target, _clip_bounds);
     }
 }

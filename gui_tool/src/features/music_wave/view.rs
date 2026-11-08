@@ -80,10 +80,10 @@ pub fn view(state: &MusicWave) -> Element<'_, Msg> {
     let solo_speed_row = row![
         text("速度").size(11).color(Color::from_rgb8(140,160,190)),
         text(format!("{:.2}x", state.solo_speed)).size(11).color(Color::from_rgb8(150,160,180)),
-        slider(0.01..=5.0, state.solo_speed, Msg::SoloSpeedChanged).step(0.01).width(Length::Fixed(100.0)),
+        slider(0.01_f32..=5.0, state.solo_speed, Msg::SoloSpeedChanged).step(0.01_f32).width(Length::Fixed(100.0)),
         text("缩放").size(11).color(Color::from_rgb8(140,160,190)),
         text(format!("{:.1}x", state.solo_zoom)).size(11).color(Color::from_rgb8(150,160,180)),
-        slider(0.1..=5.0, state.solo_zoom, Msg::SoloZoom).step(0.1).width(Length::Fixed(80.0)),
+        slider(0.1_f32..=5.0, state.solo_zoom, Msg::SoloZoom).step(0.1_f32).width(Length::Fixed(80.0)),
     ].spacing(4).align_y(iced::Alignment::Center);
 
     let solo_area = container(column![
@@ -102,10 +102,10 @@ pub fn view(state: &MusicWave) -> Element<'_, Msg> {
     let combo_ctrl = row![
         text("速度").size(11).color(Color::from_rgb8(140,160,190)),
         text(format!("{:.2}x", state.combo_speed)).size(11).color(Color::from_rgb8(150,160,180)),
-        slider(0.01..=5.0, state.combo_speed, Msg::ComboSpeedChanged).step(0.01).width(Length::Fixed(100.0)),
+        slider(0.01_f32..=5.0, state.combo_speed, Msg::ComboSpeedChanged).step(0.01_f32).width(Length::Fixed(100.0)),
         text("缩放").size(11).color(Color::from_rgb8(140,160,190)),
         text(format!("{:.1}x", state.combo_zoom)).size(11).color(Color::from_rgb8(150,160,180)),
-        slider(0.1..=10.0, state.combo_zoom, Msg::ComboZoom).step(0.1).width(Length::Fixed(80.0)),
+        slider(0.1_f32..=10.0, state.combo_zoom, Msg::ComboZoom).step(0.1_f32).width(Length::Fixed(80.0)),
     ].spacing(4).align_y(iced::Alignment::Center);
 
     let combo_area = container(column![

@@ -58,6 +58,7 @@
 // `pub mod` 声明：当前模块 `ui` 下的子模块
 // 编译器会查找 ui/app.rs, ui/menu.rs, ui/widgets.rs (或 ui/widgets/mod.rs)
 pub mod app;
+pub mod state;
 pub mod widgets;
 
 use std::time::Instant;
@@ -186,6 +187,8 @@ pub enum Message {
     PromptGen(crate::features::prompt_gen::Msg),
     /// 窗口帧更新事件
     Tick(Instant),
+    /// 切换主题
+    SetTheme(crate::theme::ThemeId),
 }
 
 /// 创建初始应用状态
@@ -237,7 +240,7 @@ fn view(state: &App) -> Element<'_, Message> {
     state.view()
 }
 
-fn subscription(state: &App) -> Subscription<Message> {
+fn subscription(_state: &App) -> Subscription<Message> {
     Subscription::batch(vec![
         window::frames().map(Message::Tick),
         window::frames().map(|t| Message::ShaderPyramid(crate::features::pyramid_3d::Msg::Tick(t))),
@@ -260,8 +263,8 @@ fn title(_state: &App) -> String {
 ///
 /// # Rust: `iced::Theme` 枚举
 /// iced 内置 Light 和 Dark 主题。本项目使用 `iced::Theme::Dark`。
-fn theme(_state: &App) -> iced::Theme {
-    App::theme()
+fn theme(state: &App) -> iced::Theme {
+    state.theme()
 }
 
 /// 启动 iced 桌面应用

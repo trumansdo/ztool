@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use iced::wgpu::util::DeviceExt;
 use iced::widget::shader::Pipeline;
-use iced::{wgpu, widget::shader};
+use iced::wgpu;
 
 use pyramid_shape::PyramidRaw;
 use uniforms::Uniforms;
@@ -200,7 +200,7 @@ impl PyramidPipeline {
         // 上传实例数据（按需扩容实例缓冲区）
         if !pyramid_raws.is_empty() {
             let required_size =
-                (std::mem::size_of::<PyramidRaw>() * pyramid_raws.len()) as wgpu::BufferAddress;
+                std::mem::size_of_val(&pyramid_raws[..]) as wgpu::BufferAddress;
 
             // 如果当前缓冲区不够大，重新创建
             if required_size > self.instance_buffer.size() {
@@ -274,7 +274,7 @@ impl PyramidPipeline {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         target: &wgpu::TextureView,
-        clip_bounds: &iced::Rectangle<u32>,
+        _clip_bounds: &iced::Rectangle<u32>,
     ) {
         // 使用存储的 target 尺寸（来自 viewport.physical_size），而非 clip_bounds
         // clip_bounds 只是 target 纹理的子区域，用它创建深度纹理会导致尺寸不匹配

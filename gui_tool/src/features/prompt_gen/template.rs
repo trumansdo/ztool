@@ -32,7 +32,7 @@ pub fn parse_user_sections(input: &str) -> Vec<UserSection> {
     let mut in_section = false;
 
     for line in input.lines() {
-        if line.starts_with('#') {
+        if let Some(rest) = line.strip_prefix('#') {
             // 保存上一个变量
             if in_section && !current_name.is_empty() {
                 sections.push(UserSection {
@@ -41,7 +41,7 @@ pub fn parse_user_sections(input: &str) -> Vec<UserSection> {
                 });
             }
             // 开始新变量
-            current_name = line[1..].trim().to_string();
+            current_name = rest.trim().to_string();
             current_content = String::new();
             in_section = !current_name.is_empty();
         } else if in_section {

@@ -181,7 +181,7 @@ where
         &self,
         tree: &Tree,
         renderer: &mut Renderer,
-        _theme: &Theme,
+        theme: &Theme,
         _style: &renderer::Style,
         layout: Layout<'_>,
         _cursor: mouse::Cursor,
@@ -230,7 +230,7 @@ where
                         Size::new(bounds.width, self.item_height),
                     ),
                     Point::new(bounds.x + ROOT_PADDING_X, bounds.y + (self.item_height - ROOT_FONT_SIZE) / 2.0),
-                    Color::WHITE,
+                    theme.palette().text,
                     *viewport,
                 );
             }

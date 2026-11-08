@@ -217,7 +217,7 @@ impl Primitive for TrianglePrimitive {
         pipeline: &mut Self::Pipeline,
         device: &iced::wgpu::Device,
         queue: &iced::wgpu::Queue,
-        bounds: &iced::Rectangle,
+        _bounds: &iced::Rectangle,
         viewport: &Viewport,
     ) {
         // TODO: 检测 bounds 宽高，与现有 depth_texture 尺寸对比，未变则跳过重建
@@ -225,8 +225,8 @@ impl Primitive for TrianglePrimitive {
         //   - 格式 Depth32Float
         //   - 用途 RENDER_ATTACHMENT
         //   - 尺寸匹配 bounds 宽高
-        let bw = bounds.width.ceil() as u32;
-        let bh = bounds.height.ceil() as u32;
+        let bw = _bounds.width.ceil() as u32;
+        let bh = _bounds.height.ceil() as u32;
         // 已有纹理大小如果小于了窗口变动就需要更新
         let need_new: bool = match &pipeline.depth_texture {
             Some(x) => x.width() < bw || x.height() < bh,
@@ -264,7 +264,7 @@ impl Primitive for TrianglePrimitive {
             let up = glam::Vec3::Y;
             let view_matrix = glam::Mat4::look_at_rh(eye, center, up);
             let fov_y = 45.0;
-            let aspect = bounds.width / bounds.height;
+            let aspect = _bounds.width / _bounds.height;
             let z_near = 0.1;
             let z_far = 100.0;
             let projection_matrix = glam::Mat4::perspective_rh(fov_y, aspect, z_near, z_far);
@@ -293,7 +293,7 @@ impl Primitive for TrianglePrimitive {
         pipeline: &Self::Pipeline,
         encoder: &mut iced::wgpu::CommandEncoder,
         target: &iced::wgpu::TextureView,
-        clip_bounds: &iced::Rectangle<u32>,
+        _clip_bounds: &iced::Rectangle<u32>,
     ) {
         // TODO: 获取深度纹理，为空则 return
         if pipeline.depth_texture == None {
@@ -331,15 +331,15 @@ impl Primitive for TrianglePrimitive {
         });
         // TODO: render_pass.set_viewport
         render_pass.set_viewport(
-            clip_bounds.x as f32,
-            clip_bounds.y as f32,
-            clip_bounds.width as f32,
-            clip_bounds.height as f32,
+            _clip_bounds.x as f32,
+            _clip_bounds.y as f32,
+            _clip_bounds.width as f32,
+            _clip_bounds.height as f32,
             0.0,
             1.0,
         );
         // TODO: render_pass.set_scissor_rect
-        render_pass.set_scissor_rect(clip_bounds.x, clip_bounds.y, clip_bounds.width, clip_bounds.height);
+        render_pass.set_scissor_rect(_clip_bounds.x, _clip_bounds.y, _clip_bounds.width, _clip_bounds.height);
         // TODO: render_pass.set_pipeline
         render_pass.set_pipeline(&pipeline.render_pipeline);
         // TODO: render_pass.set_vertex_buffer

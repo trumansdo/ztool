@@ -5,23 +5,60 @@
 use crate::ui::widgets::toast::{Toast, ToastLevel, ToastPosition};
 
 /// UI 组件库的子 tab 枚举
+///
+/// 按功能领域分组，每个 tab 同时展示 iced-kit 和 iced-shadcn 版本（如可用）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ComponentTab {
+    // ---- 按钮 ----
     #[default]
+    Button,
+    ButtonGroup,
+    // ---- 表单 ----
+    Toggle,
+    Checkbox,
+    Radio,
+    Slider,
+    Select,
+    Input,
+    Textarea,
+    NumberInput,
+    // ---- 展示 ----
     Badge,
     Card,
-    Button,
-    Toggle,
     Separator,
-    Tab,
-    NumberInput,
     Spinner,
+    Progress,
+    Skeleton,
+    Avatar,
+    Kbd,
+    // ---- 导航 ----
+    Tab,
+    Breadcrumb,
+    Pagination,
+    Stepper,
+    // ---- 浮层 ----
+    Dialog,
+    Drawer,
+    Popover,
+    Tooltip,
+    // ---- 反馈 ----
+    Toast,
+    Alert,
+    // ---- 数据 ----
+    Table,
+    DatePicker,
+    ColorPicker,
+    // ---- 布局 ----
+    Accordion,
+    Collapsible,
+    Resizable,
     Wrap,
     Split,
-    Toast,
-    ColorPicker,
-    DatePicker,
+    // ---- 其他 ----
     Menu,
+    StarRating,
+    CopyButton,
+    Meter,
 }
 
 #[derive(Debug, Clone)]
@@ -36,7 +73,6 @@ pub enum Msg {
     MenuClicked(String),
 }
 
-#[derive(Default)]
 pub struct UiLibs {
     pub selected_tab: ComponentTab,
     pub click_count: u32,
@@ -44,6 +80,21 @@ pub struct UiLibs {
     pub number_value: i32,
     pub selected_color: iced::Color,
     pub toasts: Vec<Toast>,
+    pub kit_theme: iced_kit::Theme,
+}
+
+impl Default for UiLibs {
+    fn default() -> Self {
+        Self {
+            selected_tab: ComponentTab::Badge,
+            click_count: 0,
+            toggle_value: false,
+            number_value: 0,
+            selected_color: iced::Color::from_rgb(0.5, 0.5, 0.5),
+            toasts: Vec::new(),
+            kit_theme: iced_kit::Theme::dark(),
+        }
+    }
 }
 
 impl UiLibs {

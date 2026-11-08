@@ -9,6 +9,16 @@ use super::model::{PromptStore, PromptTemplate};
 use super::storage;
 use super::template;
 
+/// 加载状态机
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LoadState {
+    /// 未加载
+    #[default]
+    Pending,
+    /// 已加载
+    Loaded,
+}
+
 /// 提示词生成器状态
 #[derive(Default)]
 pub struct PromptGenerator {
@@ -27,7 +37,7 @@ pub struct PromptGenerator {
     /// 存储错误信息
     pub error: Option<String>,
     /// 加载状态
-    pub loaded: bool,
+    pub load_state: LoadState,
 }
 
 /// 消息枚举
@@ -64,10 +74,10 @@ pub enum Msg {
 pub fn update(pg: &mut PromptGenerator, msg: Msg) -> Task<Msg> {
     match msg {
         Msg::Load => {
-            if pg.loaded {
+            if pg.load_state == LoadState::Loaded {
                 return Task::none();
             }
-            pg.loaded = true;
+            pg.load_state = LoadState::Loaded;
             Task::perform(load_store(), Msg::Loaded)
         }
         Msg::Loaded(result) => {

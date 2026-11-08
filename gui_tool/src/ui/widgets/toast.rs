@@ -67,6 +67,9 @@ pub const DEFAULT_TIMEOUT: u64 = 3;
 ///
 /// 实现了 `Default` trait，默认值为 `Info`。
 /// 实现了 `Copy`，值传递零开销。
+mod toast_list;
+pub use toast_list::ToastList;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToastLevel {
     /// 普通信息通知（默认）
@@ -112,7 +115,7 @@ pub enum ToastPosition {
 /// 单个 Toast 消息的配置数据，由外部调用方创建。
 ///
 /// 实现 `Clone` 是因为 Manager::new() 中需要遍历它；实现 `Debug` 用于调试。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Toast {
     /// 通知级别，决定边框颜色
     pub level: ToastLevel,
@@ -120,16 +123,6 @@ pub struct Toast {
     pub text: String,
     /// 显示位置（右下 / 右上）
     pub position: ToastPosition,
-}
-
-impl Default for Toast {
-    fn default() -> Self {
-        Self {
-            level: ToastLevel::default(), // → Info
-            text: String::new(),
-            position: ToastPosition::default(), // → BottomRight
-        }
-    }
 }
 
 // --------------- Manager Widget ---------------

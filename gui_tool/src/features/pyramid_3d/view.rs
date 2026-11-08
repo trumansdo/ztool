@@ -13,21 +13,21 @@ pub fn view(pyramid: &Pyramid) -> Element<'_, Msg> {
         row![
             text("X轴"),
             slider(0.0..=2.0 * PI, pyramid.scene.angle_x, move |v| { Msg::RotationXChanged(v) })
-                .step(0.01)
+                .step(0.01_f32)
                 .width(80)
         ]
         .spacing(10),
         row![
             text("Y轴"),
             slider(0.0..=2.0 * PI, pyramid.scene.angle_y, move |v| { Msg::RotationYChanged(v) })
-                .step(0.01)
+                .step(0.01_f32)
                 .width(80)
         ]
         .spacing(10),
         row![
             text("Z轴"),
             slider(0.0..=2.0 * PI, pyramid.scene.angle_z, move |v| { Msg::RotationZChanged(v) })
-                .step(0.01)
+                .step(0.01_f32)
                 .width(80)
         ]
         .spacing(10),

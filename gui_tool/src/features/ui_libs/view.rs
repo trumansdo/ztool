@@ -15,40 +15,110 @@ use crate::ui::widgets::Toaster;
 
 /// 主视图：渲染 sub-tab 切换栏 + 对应的组件展示内容 + Toast
 pub fn view(libs: &UiLibs) -> Element<'_, Msg> {
-    // 快捷按钮行：Wrap 自动换行容器，无滚动条，超出宽度自动折行（不裁剪不溢出）
+    // 快捷按钮行：Wrap 自动换行容器
     let tabs = Wrap::with_elements(vec![
+        // 按钮
+        tab_button("Button", ComponentTab::Button, libs.selected_tab),
+        tab_button("ButtonGroup", ComponentTab::ButtonGroup, libs.selected_tab),
+        // 表单
+        tab_button("Toggle", ComponentTab::Toggle, libs.selected_tab),
+        tab_button("Checkbox", ComponentTab::Checkbox, libs.selected_tab),
+        tab_button("Radio", ComponentTab::Radio, libs.selected_tab),
+        tab_button("Slider", ComponentTab::Slider, libs.selected_tab),
+        tab_button("Select", ComponentTab::Select, libs.selected_tab),
+        tab_button("Input", ComponentTab::Input, libs.selected_tab),
+        tab_button("Textarea", ComponentTab::Textarea, libs.selected_tab),
+        tab_button("Number", ComponentTab::NumberInput, libs.selected_tab),
+        // 展示
         tab_button("Badge", ComponentTab::Badge, libs.selected_tab),
         tab_button("Card", ComponentTab::Card, libs.selected_tab),
-        tab_button("Button", ComponentTab::Button, libs.selected_tab),
-        tab_button("Toggle", ComponentTab::Toggle, libs.selected_tab),
         tab_button("Separator", ComponentTab::Separator, libs.selected_tab),
-        tab_button("Tab", ComponentTab::Tab, libs.selected_tab),
-        tab_button("NumberInput", ComponentTab::NumberInput, libs.selected_tab),
         tab_button("Spinner", ComponentTab::Spinner, libs.selected_tab),
+        tab_button("Progress", ComponentTab::Progress, libs.selected_tab),
+        tab_button("Skeleton", ComponentTab::Skeleton, libs.selected_tab),
+        tab_button("Avatar", ComponentTab::Avatar, libs.selected_tab),
+        tab_button("Kbd", ComponentTab::Kbd, libs.selected_tab),
+        // 导航
+        tab_button("Tab", ComponentTab::Tab, libs.selected_tab),
+        tab_button("Breadcrumb", ComponentTab::Breadcrumb, libs.selected_tab),
+        tab_button("Pagination", ComponentTab::Pagination, libs.selected_tab),
+        tab_button("Stepper", ComponentTab::Stepper, libs.selected_tab),
+        // 浮层
+        tab_button("Dialog", ComponentTab::Dialog, libs.selected_tab),
+        tab_button("Drawer", ComponentTab::Drawer, libs.selected_tab),
+        tab_button("Popover", ComponentTab::Popover, libs.selected_tab),
+        tab_button("Tooltip", ComponentTab::Tooltip, libs.selected_tab),
+        // 反馈
+        tab_button("Toast", ComponentTab::Toast, libs.selected_tab),
+        tab_button("Alert", ComponentTab::Alert, libs.selected_tab),
+        // 数据
+        tab_button("Table", ComponentTab::Table, libs.selected_tab),
+        tab_button("Date", ComponentTab::DatePicker, libs.selected_tab),
+        tab_button("Color", ComponentTab::ColorPicker, libs.selected_tab),
+        // 布局
+        tab_button("Accordion", ComponentTab::Accordion, libs.selected_tab),
+        tab_button("Collapsible", ComponentTab::Collapsible, libs.selected_tab),
+        tab_button("Resizable", ComponentTab::Resizable, libs.selected_tab),
         tab_button("Wrap", ComponentTab::Wrap, libs.selected_tab),
         tab_button("Split", ComponentTab::Split, libs.selected_tab),
-        tab_button("Toast", ComponentTab::Toast, libs.selected_tab),
-        tab_button("Color", ComponentTab::ColorPicker, libs.selected_tab),
-        tab_button("Date", ComponentTab::DatePicker, libs.selected_tab),
+        // 其他
         tab_button("Menu", ComponentTab::Menu, libs.selected_tab),
+        tab_button("StarRating", ComponentTab::StarRating, libs.selected_tab),
+        tab_button("CopyBtn", ComponentTab::CopyButton, libs.selected_tab),
+        tab_button("Meter", ComponentTab::Meter, libs.selected_tab),
     ])
     .spacing(theme::size(0.3).0);
 
     let content = match libs.selected_tab {
+        // 按钮
+        ComponentTab::Button => view_button(libs),
+        ComponentTab::ButtonGroup => view_button_group(libs),
+        // 表单
+        ComponentTab::Toggle => view_toggle(libs),
+        ComponentTab::Checkbox => view_checkbox(libs),
+        ComponentTab::Radio => view_radio(libs),
+        ComponentTab::Slider => view_slider(libs),
+        ComponentTab::Select => view_select(libs),
+        ComponentTab::Input => view_input(libs),
+        ComponentTab::Textarea => view_textarea(libs),
+        ComponentTab::NumberInput => view_number_input(libs),
+        // 展示
         ComponentTab::Badge => view_badge(),
         ComponentTab::Card => view_card(libs),
-        ComponentTab::Button => view_button(libs),
-        ComponentTab::Toggle => view_toggle(libs),
         ComponentTab::Separator => view_separator(),
-        ComponentTab::Tab => view_tab(libs),
-        ComponentTab::NumberInput => view_number_input(libs),
         ComponentTab::Spinner => view_spinner(),
+        ComponentTab::Progress => view_progress(libs),
+        ComponentTab::Skeleton => view_skeleton(libs),
+        ComponentTab::Avatar => view_avatar(libs),
+        ComponentTab::Kbd => view_kbd(libs),
+        // 导航
+        ComponentTab::Tab => view_tab(libs),
+        ComponentTab::Breadcrumb => view_breadcrumb(libs),
+        ComponentTab::Pagination => view_pagination(libs),
+        ComponentTab::Stepper => view_stepper(libs),
+        // 浮层
+        ComponentTab::Dialog => view_dialog(libs),
+        ComponentTab::Drawer => view_drawer(libs),
+        ComponentTab::Popover => view_popover(libs),
+        ComponentTab::Tooltip => view_tooltip(libs),
+        // 反馈
+        ComponentTab::Toast => view_toast(),
+        ComponentTab::Alert => view_alert(libs),
+        // 数据
+        ComponentTab::Table => view_table(libs),
+        ComponentTab::DatePicker => view_date_picker(),
+        ComponentTab::ColorPicker => view_color_picker(libs),
+        // 布局
+        ComponentTab::Accordion => view_accordion(libs),
+        ComponentTab::Collapsible => view_collapsible(libs),
+        ComponentTab::Resizable => view_resizable(libs),
         ComponentTab::Wrap => view_wrap(),
         ComponentTab::Split => view_split(),
-        ComponentTab::Toast => view_toast(),
-        ComponentTab::ColorPicker => view_color_picker(libs),
-        ComponentTab::DatePicker => view_date_picker(),
+        // 其他
         ComponentTab::Menu => view_menu(libs),
+        ComponentTab::StarRating => view_star_rating(libs),
+        ComponentTab::CopyButton => view_copy_button(libs),
+        ComponentTab::Meter => view_meter(libs),
     };
 
     let content = container(
@@ -477,6 +547,352 @@ fn view_menu(libs: &UiLibs) -> Element<'static, Msg> {
         text(format!("菜单交互次数: {}", libs.click_count)).size(theme::font(0.9)),
         text("").size(theme::font(0.3)),
         text("提示：点击菜单外部区域或按 ESC 可关闭菜单").size(theme::font(0.7)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+// ============================================================================
+// 新增组件视图
+// ============================================================================
+
+fn view_button_group(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::{ButtonGroup, button};
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    let group = ButtonGroup::new()
+        .push(button("左").on_press(Msg::ButtonPressed))
+        .push(button("中").on_press(Msg::ButtonPressed))
+        .push(button("右").on_press(Msg::ButtonPressed));
+    column![
+        text("ButtonGroup 按钮组").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(group.into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_checkbox(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::toggle::checkbox;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    let tv = libs.toggle_value;
+    column![
+        text("Checkbox 复选框").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(checkbox("选项 A", tv, move |_| Msg::ToggleChanged(!tv)).into(), kt),
+        kit_element(checkbox("选项 B", !tv, move |_| Msg::ToggleChanged(tv)).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_radio(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::toggle::radio;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    column![
+        text("Radio 单选框").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(radio("选项 1", 1, Some(1), |_| Msg::ButtonPressed).into(), kt),
+        kit_element(radio("选项 2", 2, Some(1), |_| Msg::ButtonPressed).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_slider(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::toggle::slider;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    let nv = libs.number_value;
+    column![
+        text("Slider 滑块").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(slider(0..=100, nv, move |v| Msg::NumberChanged(v)).into(), kt),
+        text(format!("值: {}", nv)).size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_select(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::select::select;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    let options = vec!["选项 A".to_string(), "选项 B".to_string(), "选项 C".to_string()];
+    column![
+        text("Select 下拉选择").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(select(options, Some("选项 A".to_string()), |_| Msg::ButtonPressed).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_input(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::input::text_input;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    column![
+        text("Input 文本输入").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(text_input("请输入...", "").into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_textarea(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::input::text_area;
+    use iced::widget::text_editor;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    let content: &'static text_editor::Content = Box::leak(Box::new(text_editor::Content::with_text("")));
+    column![
+        text("Textarea 多行输入").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(text_area("请输入多行文本...", content).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_progress(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::display::{progress, Tone};
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    column![
+        text("Progress 进度条").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(progress(0.6, Tone::Primary).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_skeleton(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::skeleton::{skeleton, SkeletonShape};
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    column![
+        text("Skeleton 骨架屏").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(skeleton(SkeletonShape::Text, 3).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_avatar(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::avatar::avatar;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    column![
+        text("Avatar 头像").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(avatar("U", 32).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_kbd(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::typography::kbd;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    column![
+        text("Kbd 键盘快捷键").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(kbd("Ctrl+S").into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_breadcrumb(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::navigation::{breadcrumb, Crumb};
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    let crumbs = vec![
+        Crumb::link("首页", Msg::ButtonPressed),
+        Crumb::link("组件", Msg::ButtonPressed),
+        Crumb::new("详情"),
+    ];
+    column![
+        text("Breadcrumb 面包屑").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(breadcrumb(crumbs).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_pagination(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::navigation::pagination;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    column![
+        text("Pagination 分页").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(pagination(1, 10, |_| Msg::ButtonPressed).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_stepper(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::navigation::stepper;
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    let steps = vec![
+        iced_kit::widgets::navigation::Step::new("步骤1"),
+        iced_kit::widgets::navigation::Step::new("步骤2"),
+        iced_kit::widgets::navigation::Step::new("步骤3"),
+    ];
+    column![
+        text("Stepper 步骤条").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(stepper(steps, 0).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_dialog(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("Dialog 对话框").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要 overlay 支持，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_drawer(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("Drawer 抽屉").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要 overlay 支持，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_popover(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("Popover 弹出框").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要 overlay 支持，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_tooltip(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("Tooltip 工具提示").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要 overlay 支持，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_alert(libs: &UiLibs) -> Element<'static, Msg> {
+    use iced_kit::widgets::display::{alert, Tone};
+    use crate::theme::kit_adapter::kit_element;
+    let kt = &libs.kit_theme;
+    column![
+        text("Alert 警告提示").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("iced-kit:").size(theme::font(0.85)),
+        kit_element(alert("提示", "这是一条提示信息", Tone::Primary).into(), kt),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_table(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("Table 数据表格").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要 DataTable 状态管理，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_accordion(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("Accordion 手风琴").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要状态管理，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_collapsible(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("Collapsible 可折叠").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要状态管理，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_resizable(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("Resizable 可调整大小").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要状态管理，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_star_rating(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("StarRating 星级评分").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要状态管理，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_copy_button(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("CopyButton 复制按钮").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要剪贴板支持，当前展示占位").size(theme::font(0.8)),
+    ]
+    .spacing(theme::size(0.3).0 as u32)
+    .into()
+}
+
+fn view_meter(_libs: &UiLibs) -> Element<'static, Msg> {
+    column![
+        text("Meter 仪表盘").size(theme::font(1.0)),
+        text("").size(theme::font(0.3)),
+        text("需要状态管理，当前展示占位").size(theme::font(0.8)),
     ]
     .spacing(theme::size(0.3).0 as u32)
     .into()

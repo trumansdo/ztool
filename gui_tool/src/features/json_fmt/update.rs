@@ -2,7 +2,7 @@
 //!
 //! 处理 JSON 格式化相关的所有消息：输入变化、格式化、复制、清空。
 
-use crate::ui::widgets::toast::{Toast, ToastLevel, ToastPosition};
+use crate::ui::widgets::toast::{ToastLevel, ToastList, ToastPosition};
 use thiserror::Error;
 use iced::widget::text_editor;
 
@@ -11,7 +11,7 @@ pub struct JsonFormatter {
     pub input: text_editor::Content,
     pub output: text_editor::Content,
     pub error: Option<JsonFmtError>,
-    pub toasts: Vec<Toast>,
+    pub toasts: ToastList,
 }
 
 #[derive(Debug, Clone, Error)]
@@ -63,15 +63,11 @@ pub fn update(formatter: &mut JsonFormatter, msg: Msg) -> iced::Task<Msg> {
         }
         Msg::CopyOutput => {
             let text = formatter.output.text().to_string();
-            formatter.toasts.push(Toast {
-                level: ToastLevel::Success,
-                text: "已复制到剪贴板".to_string(),
-                position: ToastPosition::TopRight,
-            });
+            formatter.toasts.push(ToastLevel::Success, "已复制到剪贴板", ToastPosition::TopRight);
             iced::clipboard::write(text)
         }
         Msg::CloseToast(index) => {
-            formatter.toasts.remove(index);
+            formatter.toasts.close(index);
             iced::Task::none()
         }
     }

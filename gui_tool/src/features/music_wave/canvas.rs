@@ -2,7 +2,7 @@
 
 use super::types::{Pitch, PitchClass, Octave, AMPLITUDE, harmonic_base};
 use iced::mouse;
-use iced::widget::canvas::{self, Frame, Geometry, Path, Program, Stroke, Text};
+use iced::widget::canvas::{Frame, Geometry, Path, Program, Stroke, Text};
 use iced::{Color, Rectangle, Theme, Point};
 use std::f64::consts::TAU;
 

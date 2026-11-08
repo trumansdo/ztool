@@ -69,20 +69,29 @@ const MIN_WIDTH: f32 = 150.0;
 /// 菜单文本字号
 const FONT_SIZE: f32 = 14.0;
 
-/// 菜单背景色（深色面板）
-const BG: Color = Color::from_rgb8(31, 31, 41);
-/// 菜单项悬停高亮色（与 tree_menu 选中色一致的蓝色调）
-const HOVER: Color = Color::from_rgb8(40, 80, 120);
-/// 菜单边框色
-const BORDER: Color = Color::from_rgb8(64, 64, 84);
-/// 菜单文本色
-const TEXT: Color = Color::WHITE;
-/// 禁用项文本色（灰显）
-const DISABLED: Color = Color::from_rgb8(115, 115, 128);
-/// 分隔线颜色
-const SEPARATOR: Color = Color::from_rgb8(77, 77, 97);
-/// Folder 箭头颜色
-const ARROW_COLOR: Color = Color::from_rgb8(178, 178, 191);
+/// 从主题调色板派生菜单颜色
+fn menu_colors(theme: &Theme) -> MenuColors {
+    let p = theme.palette();
+    MenuColors {
+        bg: p.background,
+        hover: p.primary,
+        border: p.text.scale_alpha(0.2),
+        text: p.text,
+        disabled: p.text.scale_alpha(0.4),
+        separator: p.text.scale_alpha(0.15),
+        arrow: p.text.scale_alpha(0.6),
+    }
+}
+
+struct MenuColors {
+    bg: Color,
+    hover: Color,
+    border: Color,
+    text: Color,
+    disabled: Color,
+    separator: Color,
+    arrow: Color,
+}
 
 // --------------- 状态控制层 ---------------
 
@@ -285,7 +294,7 @@ where
     fn draw(
         &self,
         renderer: &mut Renderer,
-        _theme: &Theme,
+        theme: &Theme,
         _style: &renderer::Style,
         layout: Layout<'_>,
         _cursor: mouse::Cursor,
@@ -298,13 +307,13 @@ where
             Quad {
                 bounds,
                 border: Border {
-                    color: BORDER,
+                    color: menu_colors(theme).border,
                     width: 1.0,
                     radius: 4.0.into(),
                 },
                 ..Default::default()
             },
-            BG,
+            menu_colors(theme).bg,
         );
 
         // 2. 逐项绘制
@@ -319,7 +328,7 @@ where
                     width: bounds.width - 2.0 * H_PADDING,
                     height: 1.0,
                 };
-                renderer.fill_quad(Quad { bounds: line, ..Default::default() }, SEPARATOR);
+                renderer.fill_quad(Quad { bounds: line, ..Default::default() }, menu_colors(theme).separator);
                 continue;
             }
 
@@ -347,13 +356,14 @@ where
                         },
                         ..Default::default()
                     },
-                    HOVER,
+                    menu_colors(theme).hover,
                 );
             }
 
             // 文本垂直居中：y + (项高 - 字号) / 2
             let text_y = item_bounds.y + (ITEM_HEIGHT - FONT_SIZE) / 2.0;
-            let text_color = if enabled { TEXT } else { DISABLED };
+            let mc = menu_colors(theme);
+            let text_color = if enabled { mc.text } else { mc.disabled };
 
             // 图标（预留 ICON_AREA 保证文本对齐）
             if let Some(icon) = icon {
@@ -396,7 +406,7 @@ where
                         item_bounds.x + item_bounds.width - H_PADDING - ARROW_AREA + 4.0,
                         text_y,
                     ),
-                    ARROW_COLOR,
+                    mc.arrow,
                     bounds,
                 );
             }

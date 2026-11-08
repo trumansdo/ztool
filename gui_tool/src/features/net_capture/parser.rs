@@ -269,12 +269,12 @@ impl HttpInfo {
         
         // 请求信息
         if let Some(ref method) = self.method {
-            parts.push(format!("{} {} {}", method, self.uri.as_ref().unwrap_or(&String::new()), self.version.as_ref().unwrap_or(&String::new())));
+            parts.push(format!("{} {} {}", method, self.uri.as_deref().unwrap_or_default(), self.version.as_deref().unwrap_or_default()));
         }
         
         // 响应状态
         if let Some(code) = self.response_code {
-            parts.push(format!("{} {}", self.version.as_ref().unwrap_or(&String::new()), code));
+            parts.push(format!("{} {}", self.version.as_deref().unwrap_or_default(), code));
         }
         
         // Host 头 — HashMap::get() 返回 Option<&V>

@@ -74,6 +74,9 @@
 /// 这里用 `mod` 而非 `pub mod`，因为这些模块仅在本 crate 内部使用。
 /// 对于 binary crate (有 `main` 函数的)，外部无法依赖它，所以 `pub` 没有实际影响。
 mod features;
+mod service;
+mod settings;
+mod theme;
 
 /// UI 层模块集合
 ///

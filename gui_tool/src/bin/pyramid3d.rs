@@ -662,12 +662,12 @@ impl Primitive for PyramidPrimitive {
         // 命令队列引用：通过 write_buffer() 上传 CPU 数据到 GPU
         queue: &iced::wgpu::Queue,
         // 控件边界矩形（像素），用于计算投影矩阵 aspect 比
-        bounds: &iced::Rectangle,
+        _bounds: &iced::Rectangle,
         // 视口信息，提供物理尺寸用于判断是否需要重建深度纹理
         viewport: &Viewport,
     ) {
         println!(">>> Primitive::prepare 被调用");
-        let aspect = bounds.width / bounds.height;
+        let aspect = _bounds.width / _bounds.height;
         let view = Mat4::look_at_rh(vec3(0.0, 1.5, 3.0), Vec3::ZERO, Vec3::Y);
         let proj = Mat4::perspective_rh(45.0_f32.to_radians(), aspect, 0.1, 100.0);
         let vp_matrix = OPENGL_TO_WGPU_MATRIX * proj * view;
@@ -687,8 +687,8 @@ impl Primitive for PyramidPrimitive {
             );
         }
 
-        let w = bounds.width.ceil() as u32;
-        let h = bounds.height.ceil() as u32;
+        let w = _bounds.width.ceil() as u32;
+        let h = _bounds.height.ceil() as u32;
         let needs_new = match &pipeline.depth_texture {
             Some(tex) => tex.width() < w || tex.height() < h,
             None => true,
@@ -746,7 +746,7 @@ impl Primitive for PyramidPrimitive {
         // 目标颜色纹理视图，Iced 框架提供的帧缓冲，最终输出到屏幕
         target: &iced::wgpu::TextureView,
         // 裁剪边界（像素坐标），限制绘制区域，防止越界渲染
-        clip_bounds: &iced::Rectangle<u32>,
+        _clip_bounds: &iced::Rectangle<u32>,
     ) {
         println!(">>> Primitive::render 被调用");
         let depth_texture = match &pipeline.depth_texture {
@@ -754,8 +754,8 @@ impl Primitive for PyramidPrimitive {
             None => return,
         };
 
-        let w = clip_bounds.width.max(1);
-        let h = clip_bounds.height.max(1);
+        let w = _clip_bounds.width.max(1);
+        let h = _clip_bounds.height.max(1);
 
         // 从深度纹理创建 TextureView（使用默认描述符，使用完整纹理作为视图）
         let depth_view = depth_texture
@@ -794,9 +794,9 @@ impl Primitive for PyramidPrimitive {
 
         render_pass.set_viewport(
             // 视口左上角 x（像素坐标）
-            clip_bounds.x as f32,
+            _clip_bounds.x as f32,
             // 视口左上角 y（像素坐标）
-            clip_bounds.y as f32,
+            _clip_bounds.y as f32,
             // 视口宽度（像素）
             w as f32,
             // 视口高度（像素）
@@ -808,9 +808,9 @@ impl Primitive for PyramidPrimitive {
         );
         render_pass.set_scissor_rect(
             // 裁剪区域左上角 x（像素坐标）
-            clip_bounds.x,
+            _clip_bounds.x,
             // 裁剪区域左上角 y（像素坐标）
-            clip_bounds.y,
+            _clip_bounds.y,
             // 裁剪区域宽度
             w,
             // 裁剪区域高度

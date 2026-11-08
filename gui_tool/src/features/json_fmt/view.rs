@@ -82,5 +82,5 @@ pub fn view(formatter: &JsonFormatter) -> Element<'_, Msg> {
     .padding(theme::padding(1.0))
     .style(container::transparent);
 
-    Toaster::new(content, &formatter.toasts, Msg::CloseToast).into()
+    Toaster::new(content, formatter.toasts.as_slice(), Msg::CloseToast).into()
 }
