@@ -19,6 +19,12 @@ pub struct Config {
     pub start_top_n: usize,
     /// 起始球相似度阈值
     pub start_ball_threshold: f64,
+    /// 起始球相似度下限（相对值）：`cos ≥ 最佳命中 × 此值` 才可作为起始球
+    ///
+    /// 绝对阈值 `start_ball_threshold` 在球数上万时失效——总会有几个球
+    /// 余弦超过 0.3，导致起始球数量与图规模正相关。相对阈值让起始球
+    /// 数量只取决于「与最佳命中的接近程度」，与图规模无关。
+    pub start_ball_relative_threshold: f64,
     /// 基础注水量
     pub total_water_budget: f64,
     /// 球自身补充比例
@@ -186,6 +192,7 @@ impl Default for Config {
             max_lit_ball_count: 50,
             start_top_n: 3,
             start_ball_threshold: 0.3,
+            start_ball_relative_threshold: 0.85,
             total_water_budget: 1.0,
             supplement_ratio: 0.2,
             max_supplement_ratio: 2.0,

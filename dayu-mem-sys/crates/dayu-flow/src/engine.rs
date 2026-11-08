@@ -325,6 +325,13 @@ impl FlowEngine {
     }
 
     /// 选择起始球：嵌入相似度 Top-K
+    ///
+    /// 两道阈值：
+    /// - 绝对：`cos ≥ start_ball_threshold`（挡住完全不相关的球）
+    /// - 相对：`cos ≥ 最佳命中 × start_ball_relative_threshold`（挡住“勉强相关”的球）
+    ///
+    /// 相对阈值是必需的：球数上万时，总会有几个球余弦超过 0.3，
+    /// 只靠绝对阈值会让起始球数量随图规模增长，最终淹没整图。
     async fn select_starts(
         &self,
         storage: &dyn StorageBackend,
@@ -334,9 +341,22 @@ impl FlowEngine {
             .search_by_embedding(embedding, self.config.start_top_n)
             .await?;
 
+        let best = candidates
+            .iter()
+            .map(|(_, sim)| *sim as f64)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let relative_floor = if best.is_finite() {
+            best * self.config.start_ball_relative_threshold
+        } else {
+            f64::INFINITY
+        };
+
         let filtered: Vec<_> = candidates
             .into_iter()
-            .filter(|(_, sim)| *sim as f64 >= self.config.start_ball_threshold)
+            .filter(|(_, sim)| {
+                let s = *sim as f64;
+                s >= self.config.start_ball_threshold && s >= relative_floor
+            })
             .map(|(id, sim)| (id, sim as f64))
             .collect();
 
@@ -344,6 +364,8 @@ impl FlowEngine {
             tracing::debug!(
                 candidates = filtered.len(),
                 threshold = self.config.start_ball_threshold,
+                relative_floor,
+                best,
                 balls = ?filtered
                     .iter()
                     .map(|(id, sim)| format!("{}@{:.3}", id.0, sim))
@@ -1004,11 +1026,11 @@ mod tests {
         ];
         seed(&store, balls, vec![]).await;
 
-        let config = sample_config();
+        let mut config = (*sample_config()).clone();
+        config.start_ball_relative_threshold = 0.0; // 本测试只验注水分配，放开相对阈值
         let total_water = config.total_water_budget; // significance = 1.0
-        let engine = FlowEngine::new(config);
+        let engine = FlowEngine::new(std::sync::Arc::new(config));
         let lit = engine.flow(&store, &query, 1.0).await.unwrap();
-
         assert_eq!(lit.len(), 3, "三个孤立球都应被点亮: {lit:?}");
         let sum: f64 = lit.iter().map(|l| l.water).sum();
         assert!(
@@ -1020,8 +1042,7 @@ mod tests {
         let cos_sum = 1.0 + 0.8 + 0.6;
         for (id, sim) in [(0u64, 1.0), (1, 0.8), (2, 0.6)] {
             let want = total_water * sim / cos_sum;
-            let got = water_of(BallId(id));
-            assert!((got - want).abs() < 1e-6, "球 {id}: got {got}, want {want}");
+            let got = water_of(BallId(id));            assert!((got - want).abs() < 1e-6, "球 {id}: got {got}, want {want}");
         }
     }
 
@@ -1420,7 +1441,9 @@ mod tests {
             vec![],
         ).await;
 
-        let lit = FlowEngine::new(sample_config())
+        let mut config = (*sample_config()).clone();
+        config.start_ball_relative_threshold = 0.0; // 本测试只验绝对阈值与 Top-K
+        let lit = FlowEngine::new(std::sync::Arc::new(config))
             .flow(&store, &query, 1.0)
             .await
             .unwrap();

@@ -120,6 +120,12 @@ pub fn validate_config(config: &Config) -> Result<(), ConfigError> {
             config.start_ball_threshold
         )));
     }
+    if config.start_ball_relative_threshold <= 0.0 || config.start_ball_relative_threshold > 1.0 {
+        return Err(ConfigError::Validation(format!(
+            "start_ball_relative_threshold 必须在 (0,1] 范围内，当前: {}",
+            config.start_ball_relative_threshold
+        )));
+    }
     if config.total_water_budget <= 0.0 {
         return Err(ConfigError::Validation(
             "total_water_budget 必须 > 0".into(),
@@ -284,6 +290,7 @@ max_flow_depth = 5
 max_lit_ball_count = 50
 start_top_n = 3
 start_ball_threshold = 0.3
+start_ball_relative_threshold = 0.85
 total_water_budget = 1.0
 supplement_ratio = 0.2
 base_loss = 0.2
