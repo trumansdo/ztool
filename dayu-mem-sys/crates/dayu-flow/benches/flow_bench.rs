@@ -23,7 +23,7 @@ async fn build_bench_graph(store: &dayu_storage::testing::TestStore, n: usize) {
     for i in 0..n as u64 {
         balls.push(sample_ball_with_content(
             i, 1.0 + i as f64 * 0.1,
-            vec![(i + 1) as f32 / n as f32; 384],
+            vec![(i + 1) as f32 / n as f32; 512],
             &["bench content"],
         ));
         if i > 0 {
@@ -44,7 +44,7 @@ fn bench_flow_50_balls_5_hops(c: &mut Criterion) {
     let loss_model = Arc::new(PipeWeightLossModel);
     let engine = FlowEngine::with_loss_model(config, loss_model);
 
-    let query = vec![0.5; 384];
+    let query = vec![0.5; 512];
 
     c.bench_function("flow_50_balls_5_hops", |b| {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -70,7 +70,7 @@ fn bench_settle_and_inject(c: &mut Criterion) {
     let flow_engine = FlowEngine::with_loss_model(Arc::clone(&config), loss_model);
     let settle_engine = SettleEngine::new(Arc::clone(&config));
 
-    let query = vec![0.5; 384];
+    let query = vec![0.5; 512];
 
     // 先执行一次流动获取点亮结果
     let rt = tokio::runtime::Builder::new_current_thread()

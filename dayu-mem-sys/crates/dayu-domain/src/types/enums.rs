@@ -144,7 +144,6 @@ pub enum ConflictStrategy {
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum BackendKind {
     Ort,
-    Mock,
 }
 
 /// 球创建状态

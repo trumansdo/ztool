@@ -2,6 +2,14 @@
 //!
 //! 子命令：consolidate / merge / split / archive / decay-pipes / diagnose / reembed。
 //! 不要求实时，可 CLI 化隔离复杂度。
+//!
+//! 所有子命令都需要嵌入后端（归档扫描要算 `size_effective`，诊断要算相似度），
+//! 而系统已无 mock 回退，因此 `onnx` 是默认 feature。
+
+#[cfg(not(any(feature = "onnx", feature = "http", feature = "test-support")))]
+compile_error!(
+    "dayu-cli 至少需要一个嵌入后端 feature：onnx / http / test-support"
+);
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -158,7 +166,14 @@ fn main() -> anyhow::Result<()> {
                 config.max_active_balls = n;
             }
             let (days, cap) = (config.archive_inactive_days, config.max_active_balls);
-            let core = dayu_core::DayuCore::new(std::sync::Arc::new(config));
+            // 嵌入后端由 config.embedding_backend 决定（onnx / http / test）
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()?;
+            let backend = rt
+                .block_on(dayu_core::load_embedding_backend(&config))
+                .map_err(|e| anyhow::anyhow!("嵌入后端加载失败: {e}"))?;
+            let core = dayu_core::DayuCore::new(std::sync::Arc::new(config), backend)?;
             let store = dayu_storage::TriviumStorage::new(
                 cli.store.to_str().ok_or_else(|| anyhow::anyhow!("非法存储路径"))?,
             )?;

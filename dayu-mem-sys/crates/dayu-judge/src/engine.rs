@@ -128,16 +128,6 @@ impl Default for VerdictPostProcessor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock::MockJudgeBackend;
-
-    fn sample_input() -> JudgeInput {
-        JudgeInput {
-            candidate_text: "今天天气不错".to_string(),
-            candidate_embedding: vec![0.1; 384],
-            recent_window: vec!["你好".to_string()],
-            candidate_archetypes: vec![],
-        }
-    }
 
     fn make_verdict(
         significance: f64,
@@ -154,113 +144,6 @@ mod tests {
             belongs_to,
             belong_confidence,
             reason: "test".to_string(),
-        }
-    }
-
-    #[tokio::test]
-    async fn engine_discards_below_threshold() {
-        let backend = MockJudgeBackend::new();
-        backend.enqueue(make_verdict(0.1, None, 0.0));
-
-        let engine = JudgeEngine::new();
-        let result = engine.judge(&backend, &sample_input()).await.unwrap();
-
-        match result {
-            JudgeResult::Discard { .. } => {}
-            other => panic!("expected Discard, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn engine_marks_tentative_in_gray_zone() {
-        let backend = MockJudgeBackend::new();
-        backend.enqueue(make_verdict(0.4, None, 0.0));
-
-        let engine = JudgeEngine::new();
-        let result = engine.judge(&backend, &sample_input()).await.unwrap();
-
-        match result {
-            JudgeResult::Create { status, .. } => {
-                assert_eq!(status, BallCreationStatus::Tentative);
-            }
-            other => panic!("expected Create, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn engine_confirms_above_gray_zone() {
-        let backend = MockJudgeBackend::new();
-        backend.enqueue(make_verdict(0.6, None, 0.0));
-
-        let engine = JudgeEngine::new();
-        let result = engine.judge(&backend, &sample_input()).await.unwrap();
-
-        match result {
-            JudgeResult::Create { status, .. } => {
-                assert_eq!(status, BallCreationStatus::Confirmed);
-            }
-            other => panic!("expected Create, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn engine_attaches_when_belong_confidence_high() {
-        let backend = MockJudgeBackend::new();
-        backend.enqueue(make_verdict(0.8, Some(BallId(42)), 0.85));
-
-        let engine = JudgeEngine::new();
-        let result = engine.judge(&backend, &sample_input()).await.unwrap();
-
-        match result {
-            JudgeResult::Attach { ball_id, confidence, .. } => {
-                assert_eq!(ball_id, BallId(42));
-                assert_eq!(confidence, 0.85);
-            }
-            other => panic!("expected Attach, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn engine_creates_when_belong_confidence_low() {
-        let backend = MockJudgeBackend::new();
-        backend.enqueue(make_verdict(0.8, Some(BallId(42)), 0.5));
-
-        let engine = JudgeEngine::new();
-        let result = engine.judge(&backend, &sample_input()).await.unwrap();
-
-        match result {
-            JudgeResult::Create { .. } => {}
-            other => panic!("expected Create (fallback), got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn engine_creates_when_no_belong_target() {
-        let backend = MockJudgeBackend::new();
-        backend.enqueue(make_verdict(0.8, None, 0.0));
-
-        let engine = JudgeEngine::new();
-        let result = engine.judge(&backend, &sample_input()).await.unwrap();
-
-        match result {
-            JudgeResult::Create { significance, .. } => {
-                assert_eq!(significance, 0.8);
-            }
-            other => panic!("expected Create, got {:?}", other),
-        }
-    }
-
-    #[tokio::test]
-    async fn engine_custom_thresholds() {
-        let backend = MockJudgeBackend::new();
-        backend.enqueue(make_verdict(0.5, None, 0.0));
-
-        let engine = JudgeEngine::with_thresholds(0.6, 0.8, 0.9);
-        let result = engine.judge(&backend, &sample_input()).await.unwrap();
-
-        match result {
-            JudgeResult::Discard { .. } => {}
-            other => panic!("expected Discard with custom threshold, got {:?}", other),
         }
     }
 

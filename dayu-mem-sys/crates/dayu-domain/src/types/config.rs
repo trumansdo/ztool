@@ -114,16 +114,26 @@ pub struct Config {
     /// 最小管道强化阈值
     pub min_pipe_reinforce_threshold: f64,
 
-    // --- 注入参数 ---
+    // --- 嵌入参数 ---
+    /// 嵌入后端选择：`"onnx"` / `"http"` / `"test"`
+    ///
+    /// 不再有隐式回退：选中的后端不可用就直接报错。
+    pub embedding_backend: String,
     /// 期望的嵌入向量维度
     ///
     /// - `None`（默认）：以模型实际输出维度为准，不校验（推荐）
     /// - `Some(n)`：锁定维度，后端不匹配时报错
     pub embedding_dim: Option<usize>,
-    /// 嵌入模型路径（ONNX 文件）
+    /// 嵌入模型路径（ONNX 文件，`onnx` 后端用）
     pub embedding_model_path: String,
-    /// 嵌入分词器路径（tokenizer.json）
+    /// 嵌入分词器路径（tokenizer.json，`onnx` 后端用）
     pub embedding_tokenizer_path: String,
+    /// HTTP 嵌入服务地址（`http` 后端用，不含尾部 `/embeddings`）
+    pub embedding_api_base: String,
+    /// HTTP 嵌入服务密钥（`http` 后端用）
+    pub embedding_api_key: String,
+    /// HTTP 嵌入模型名（`http` 后端用，如 `Qwen/Qwen3-Embedding-4B`）
+    pub embedding_api_model: String,
     /// 注入预算模式
     pub injection_mode: InjectionMode,
     /// Token 预算上限
@@ -226,9 +236,13 @@ impl Default for Config {
             pipe_strengthen_factor: 0.05,
             min_pipe_reinforce_threshold: 0.01,
             injection_mode: InjectionMode::Token,
+            embedding_backend: "onnx".to_string(),
             embedding_dim: None,
             embedding_model_path: String::new(),
             embedding_tokenizer_path: String::new(),
+            embedding_api_base: String::new(),
+            embedding_api_key: String::new(),
+            embedding_api_model: String::new(),
             token_budget: 2048,
             max_balls_per_inject: 10,
             render_clear_threshold: 0.7,

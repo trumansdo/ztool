@@ -8,10 +8,16 @@ license.workspace = true
 crate-type = ["cdylib"]
 
 [features]
-default = []
-# 启用 ONNX Runtime：init 时按 config 的 embedding_model_path 加载真实嵌入模型，
-# 未配置或加载失败时回退到 MockEmbeddingBackend
+# napi 的唯一用途是被 Node 加载，因此默认开启 onnx；
+# 只用 HTTP 接口时：--no-default-features --features http
+# 只用确定性后端冒烟时：--no-default-features --features test-support
+default = ["onnx"]
+# ONNX Runtime 本地模型（config.embedding_backend = "onnx"）
 onnx = ["dayu-core/onnx", "dayu-embedding/onnx"]
+# OpenAI 兼容 HTTP 接口（config.embedding_backend = "http"）
+http = ["dayu-core/http", "dayu-embedding/http"]
+# 确定性哈希向量，仅用于本地冒烟/规模测试（config.embedding_backend = "test"）
+test-support = ["dayu-core/test-support", "dayu-embedding/test-support"]
 
 [dependencies]
 napi = { version = "3", features = ["tokio_rt", "async"] }

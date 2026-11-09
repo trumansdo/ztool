@@ -709,7 +709,7 @@ mod tests {
         let config = sample_config();
         let engine = SettleEngine::new(config);
 
-        let query = vec![0.5; 384];
+        let query = vec![0.5; 512];
         let result = engine
             .settle(&store, &lit_balls, &sub, &[&query], &[])
             .await
@@ -730,7 +730,7 @@ mod tests {
         let engine = SettleEngine::new(config);
 
         let result = engine
-            .settle(&store, &[], &sub, &[&vec![0.5; 384][..]], &[])
+            .settle(&store, &[], &sub, &[&vec![0.5; 512][..]], &[])
             .await;
         assert!(result.is_err());
     }
@@ -766,8 +766,8 @@ mod tests {
             LitBall { ball_id: BallId(2), water: 0.5, supplement: 0.3, depth: 1, via_pipe: None },
         ];
 
-        let ball1 = sample_ball_with_content(1, 3.0, vec![0.1; 384], &["hello world"]);
-        let ball2 = sample_ball_with_content(2, 2.0, vec![0.2; 384], &["foo bar baz qux"]);
+        let ball1 = sample_ball_with_content(1, 3.0, vec![0.1; 512], &["hello world"]);
+        let ball2 = sample_ball_with_content(2, 2.0, vec![0.2; 512], &["foo bar baz qux"]);
         let sub = SubGraph {
             balls: vec![ball1, ball2],
             pipes: vec![],
@@ -794,8 +794,8 @@ mod tests {
             LitBall { ball_id: BallId(2), water: 0.5, supplement: 0.3, depth: 1, via_pipe: None },
         ];
 
-        let ball1 = sample_ball_with_content(1, 3.0, vec![0.1; 384], &["hello"]);
-        let ball2 = sample_ball_with_content(2, 2.0, vec![0.2; 384], &["world"]);
+        let ball1 = sample_ball_with_content(1, 3.0, vec![0.1; 512], &["hello"]);
+        let ball2 = sample_ball_with_content(2, 2.0, vec![0.2; 512], &["world"]);
         let sub = SubGraph {
             balls: vec![ball1, ball2],
             pipes: vec![],
@@ -839,7 +839,7 @@ mod tests {
         let recorder = Arc::new(dayu_observability::MockMetricsRecorder::new());
         let engine = SettleEngine::new(config).with_metrics(recorder.clone());
 
-        let query = vec![0.5; 384];
+        let query = vec![0.5; 512];
         let _result = engine.settle(&store, &lit_balls, &sub, &[&query], &[]).await.unwrap();
 
         // 断言至少记录了 4 种不同指标
@@ -863,9 +863,9 @@ mod tests {
     #[tokio::test]
     async fn unrelated_ball_is_not_reinforced() {
         // query 与 B 正交 → 加权语境下 cos(ctx,B) ≈ 0.243 < impression_threshold(0.3) → 不强化
-        let mut a = vec![0.0f32; 384];
+        let mut a = vec![0.0f32; 512];
         a[0] = 1.0;
-        let mut b = vec![0.0f32; 384];
+        let mut b = vec![0.0f32; 512];
         b[1] = 1.0;
 
         let store = temp_store();
@@ -911,14 +911,14 @@ mod tests {
 
         // 维度匹配：relevance > 0，球被强化
         let matched = engine
-            .settle(&store, &lit_balls, &sub, &[&vec![0.5; 384][..]], &[])
+            .settle(&store, &lit_balls, &sub, &[&vec![0.5; 512][..]], &[])
             .await
             .unwrap();
         assert!(matched.reinforced_balls > 0, "维度匹配时应强化球");
 
-        // 维度不匹配（512 vs 384）：不 panic，relevance 计 0 → 无强化
+        // 维度不匹配（256 vs 512）：不 panic，relevance 计 0 → 无强化
         let mismatched = engine
-            .settle(&store, &lit_balls, &sub, &[&vec![0.5; 512]], &[])
+            .settle(&store, &lit_balls, &sub, &[&vec![0.5; 256]], &[])
             .await
             .expect("维度不匹配不应报错");
         assert_eq!(mismatched.reinforced_balls, 0, "维度不匹配的球不应被强化");
@@ -1006,9 +1006,9 @@ mod tests {
     /// 第二层理念断言：注水再大，偏离水源的球也不会因“水多”被判为强化球。
     #[tokio::test]
     async fn large_water_does_not_promote_unrelated_ball() {
-        let mut a = vec![0.0f32; 384];
+        let mut a = vec![0.0f32; 512];
         a[0] = 1.0;
-        let mut b = vec![0.0f32; 384];
+        let mut b = vec![0.0f32; 512];
         b[1] = 1.0;
 
         let store = temp_store();

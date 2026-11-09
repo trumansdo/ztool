@@ -155,7 +155,7 @@ pub struct JudgeInput {
 }
 
 /// 判别器输出（裁决）
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Verdict {
     pub should_judge: bool,
     pub significance: f64,

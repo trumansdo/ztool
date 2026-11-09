@@ -7,10 +7,17 @@ Cargo.lock.bak
 *.tdb.*
 logs/
 
-# 测试产物（db / 日志 / 指标 / 配置 / 脚本，整体不入库）
+# 测试产物（db / 日志 / 指标 / 本地配置）不入库
+# 但脚本、语料、示例配置、进度文档要入库（保证可复现）
 test/*
-# 但测试进度文档要入库
 !test/PROGRESS.md
+!test/corpus.cjs
+!test/probe.cjs
+!test/scale-http.cjs
+!test/config-http.example.toml
+# 本地真实配置含密钥，禁止入库
+test/config-http.toml
+!test/config-http.example.toml
 
 # napi 构建产物
 *.node

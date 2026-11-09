@@ -4,7 +4,7 @@
 //! 测试用临时目录隔离，`TempDir` 句柄必须活到测试结束——它一 Drop，数据库文件就被删。
 //!
 //! 维度惰性确定：`seed` 时按第一个球的向量维度打开数据库。测试里既有 4 维的手算场景，
-//! 也有 384 维的贴近生产场景，写死维度会让一半测试失败。
+//! 也有 512 维的贴近生产场景，写死维度会让一半测试失败。
 
 use crate::TriviumStorage;
 use async_trait::async_trait;
@@ -14,7 +14,7 @@ use dayu_domain::types::*;
 use std::sync::OnceLock;
 
 /// 未提供球时的默认维度
-const DEFAULT_DIM: usize = 384;
+const DEFAULT_DIM: usize = 512;
 
 /// 测试用存储：临时目录 + 惰性打开的真实 TriviumDB
 pub struct TestStore {
@@ -33,7 +33,7 @@ impl TestStore {
         })
     }
 
-    /// 已打开的实例；未显式指定维度时按默认 384 维打开
+    /// 已打开的实例；未显式指定维度时按默认 512 维打开
     fn opened(&self) -> &TriviumStorage {
         self.ensure(DEFAULT_DIM)
     }

@@ -11,11 +11,22 @@ use dayu_domain::traits::*;
 use dayu_domain::types::*;
 #[cfg(feature = "onnx")]
 use dayu_domain::error::*;
+#[cfg(feature = "onnx")]
+use std::sync::Mutex;
+#[cfg(feature = "onnx")]
+use std::sync::Arc;
+#[cfg(feature = "onnx")]
+use ort::value::TensorRef;
+#[cfg(feature = "onnx")]
+use ort::session::Session;
+#[cfg(feature = "onnx")]
+use ort::environment::Environment;
 
 /// ONNX 判别器后端
 #[cfg(feature = "onnx")]
 pub struct OrtJudgeBackend {
-    session: ort::Session,
+    _env: Arc<Environment>,
+    session: Mutex<Session>,
     tokenizer: tokenizers::Tokenizer,
     prompt_template: String,
     max_length: usize,
@@ -24,21 +35,28 @@ pub struct OrtJudgeBackend {
 #[cfg(feature = "onnx")]
 impl OrtJudgeBackend {
     /// 加载 ONNX 判别模型
-    ///
-    /// # 参数
-    /// - `model_path`: ONNX 模型文件路径
-    /// - `tokenizer_path`: tokenizer.json 路径
-    /// - `prompt_template`: 判别 prompt 模板（含 {role_state}、{recent_window}、{candidates} 占位符）
-    /// - `max_length`: 最大 token 长度
     pub fn load(
         model_path: &std::path::Path,
         tokenizer_path: &std::path::Path,
         prompt_template: &str,
         max_length: usize,
     ) -> Result<Self, JudgeError> {
-        let session = ort::Session::builder()
-            .map_err(|e| JudgeError::BackendUnavailable)?
-            .with_model_from_file(model_path)
+        let env = Arc::new(
+            ort::init()
+                .with_name("dayu-judge")
+                .build()
+                .map_err(|e| {
+                    tracing::error!(error = %e, "ort init failed");
+                    JudgeError::BackendUnavailable
+                })?
+        );
+
+        let session = Session::builder(&env)
+            .map_err(|e| {
+                tracing::error!(error = %e, "ort session builder failed");
+                JudgeError::BackendUnavailable
+            })?
+            .commit_from_file(model_path)
             .map_err(|e| {
                 tracing::error!(error = %e, path = %model_path.display(), "failed to load judge ONNX model");
                 JudgeError::BackendUnavailable
@@ -56,7 +74,8 @@ impl OrtJudgeBackend {
         );
 
         Ok(Self {
-            session,
+            _env: env,
+            session: Mutex::new(session),
             tokenizer,
             prompt_template: prompt_template.to_string(),
             max_length,
@@ -105,31 +124,37 @@ impl JudgeBackend for OrtJudgeBackend {
             .map(|&id| id as i64)
             .collect();
 
-        let input_tensor = ort::Value::from_array(
-            self.session.allocator(),
-            &ndarray::Array1::from_vec(token_ids).into_shape((1, token_ids.len()))
-                .map_err(|_| JudgeError::BackendUnavailable)?,
-        )
-        .map_err(|_| JudgeError::BackendUnavailable)?;
+        let seq_len = token_ids.len();
+        let input_ids_array = ndarray::Array2::from_shape_vec(
+            (1, seq_len),
+            token_ids,
+        ).map_err(|_| JudgeError::BackendUnavailable)?;
 
-        let outputs = self.session.run(vec![input_tensor])
+        let input_tensor = TensorRef::from_array_view(&input_ids_array)
+            .map_err(|_| JudgeError::BackendUnavailable)?;
+
+        let mut session = self.session.lock()
+            .map_err(|_| JudgeError::BackendUnavailable)?;
+        let outputs = session
+            .run(ort::inputs!["input_ids" => input_tensor])
             .map_err(|e| {
                 tracing::error!(error = %e, "ONNX inference failed");
                 JudgeError::BackendUnavailable
             })?;
 
+        // 提取输出 token ids
         let output_text = outputs.iter()
             .next()
-            .and_then(|(_, v)| {
-                v.try_extract::<i64>()
+            .and_then(|(_name, value)| {
+                value.try_extract_tensor::<i64>()
                     .ok()
-                    .map(|arr| {
-                        arr.iter()
+                    .map(|(_shape, data): (&ort::value::Shape, &[i64])| {
+                        data.iter()
                             .map(|&id| id as u32)
                             .collect::<Vec<u32>>()
                     })
             })
-            .and_then(|ids| {
+            .and_then(|ids: Vec<u32>| {
                 self.tokenizer.decode(&ids, true).ok()
             })
             .unwrap_or_default();
@@ -138,7 +163,7 @@ impl JudgeBackend for OrtJudgeBackend {
     }
 
     fn backend_kind(&self) -> BackendKind {
-        BackendKind::Onnx
+        BackendKind::Ort
     }
 }
 

@@ -611,7 +611,7 @@ mod tests {
         let config = sample_config();
         let engine = FlowEngine::new(config);
 
-        let query = vec![0.5; 384];
+        let query = vec![0.5; 512];
         let lit = engine.flow(&store, &query, 1.0).await.unwrap();
 
         assert!(!lit.is_empty());
@@ -625,7 +625,7 @@ mod tests {
         let config = sample_config();
         let engine = FlowEngine::new(config);
 
-        let result = engine.flow(&store, &vec![0.5; 384], 1.0).await;
+        let result = engine.flow(&store, &vec![0.5; 512], 1.0).await;
         assert!(result.is_err());
     }
 
@@ -641,7 +641,7 @@ mod tests {
         };
         let engine = FlowEngine::new(Arc::new(config));
 
-        let query = vec![0.5; 384];
+        let query = vec![0.5; 512];
         let lit = engine.flow(&store, &query, 1.0).await.unwrap();
 
         for l in lit.iter() {
@@ -691,7 +691,7 @@ mod tests {
         // 用正交 one-hot 向量构造链：仅 ball_0 命中起始阈值，其余靠传播到达
         // （uniform 向量彼此 cos=1，会让所有球都成为起始球，掩盖传播行为）
         let onehot = |i: usize| {
-            let mut v = vec![0.0f32; 384];
+            let mut v = vec![0.0f32; 512];
             v[i] = 1.0;
             v
         };
@@ -733,7 +733,7 @@ mod tests {
         let loss_model = Arc::new(crate::loss::ConstantLossModel);
         let engine = FlowEngine::with_loss_model(config, loss_model);
 
-        let query = vec![0.5; 384];
+        let query = vec![0.5; 512];
         let lit = engine.flow(&store, &query, 1.0).await.unwrap();
         assert!(!lit.is_empty(), "constant loss model should still propagate");
     }
@@ -748,7 +748,7 @@ mod tests {
         let recorder = Arc::new(dayu_observability::MockMetricsRecorder::new());
         let engine = FlowEngine::new(config).with_metrics(recorder.clone());
 
-        let query = vec![0.5; 384];
+        let query = vec![0.5; 512];
         let _lit = engine.flow(&store, &query, 1.0).await.unwrap();
 
         // 断言至少记录了 3 种不同指标
@@ -782,7 +782,7 @@ mod tests {
         };
         let engine = FlowEngine::new(Arc::new(config));
 
-        let lit = engine.flow(&store, &vec![0.5; 384], 1.0).await.unwrap();
+        let lit = engine.flow(&store, &vec![0.5; 512], 1.0).await.unwrap();
 
         assert!(!lit.is_empty(), "至少应点亮一个球");
         assert!(
@@ -797,9 +797,9 @@ mod tests {
     #[tokio::test]
     async fn supplement_is_zero_when_ball_orthogonal_to_origin() {
         let store = temp_store();
-        let mut a = vec![0.0f32; 384];
+        let mut a = vec![0.0f32; 512];
         a[0] = 1.0;
-        let mut b = vec![0.0f32; 384];
+        let mut b = vec![0.0f32; 512];
         b[1] = 1.0;
 
         seed(&store, 
@@ -826,9 +826,9 @@ mod tests {
     #[tokio::test]
     async fn supplement_positive_when_ball_aligned_with_origin() {
         let store = temp_store();
-        let mut a = vec![0.0f32; 384];
+        let mut a = vec![0.0f32; 512];
         a[0] = 1.0;
-        let mut b = vec![0.0f32; 384];
+        let mut b = vec![0.0f32; 512];
         b[0] = 0.9;
         b[1] = 0.1;
 
@@ -872,7 +872,7 @@ mod tests {
 
         let lit = tokio::time::timeout(
             std::time::Duration::from_secs(5),
-            engine.flow(&store, &vec![0.5; 384], 1.0),
+            engine.flow(&store, &vec![0.5; 512], 1.0),
         )
         .await
         .expect("自环图导致流动超时（疑似死循环）")
@@ -923,7 +923,7 @@ mod tests {
         let store = temp_store();
         let (balls, pipes) = build_chain_graph(4);
         seed(&store, balls, pipes).await;
-        let query = vec![1.0; 384];
+        let query = vec![1.0; 512];
         let cfg = sample_config();
         let engine = FlowEngine::new(cfg.clone());
 
@@ -1461,14 +1461,14 @@ mod tests {
     async fn strong_cue_multiplies_total_water() {
         async fn start_water(threshold: f64) -> f64 {
             let store = temp_store();
-            let ball = sample_ball(0, 1.0, vec![0.5; 384]);
+            let ball = sample_ball(0, 1.0, vec![0.5; 512]);
             seed(&store, vec![ball], vec![]).await;
 
             let mut cfg = (*dayu_testkit::sample_config()).clone();
             cfg.strong_cue_threshold = threshold;
 
             let lit = FlowEngine::new(Arc::new(cfg))
-                .flow(&store, &vec![0.5; 384], 1.0)
+                .flow(&store, &vec![0.5; 512], 1.0)
                 .await
                 .unwrap();
             // 起始球（depth 0）拿到的水量之和 = 总注水量
@@ -1575,8 +1575,8 @@ mod tests {
     async fn strong_cue_preserves_split_ratio() {
         let store = temp_store();
         let balls = vec![
-            sample_ball(0, 1.0, vec![0.5; 384]),
-            sample_ball(1, 1.0, vec![0.5; 384]),
+            sample_ball(0, 1.0, vec![0.5; 512]),
+            sample_ball(1, 1.0, vec![0.5; 512]),
         ];
         seed(&store, balls, vec![]).await;
 
@@ -1584,7 +1584,7 @@ mod tests {
         cfg.strong_cue_threshold = 0.8;
 
         let lit = FlowEngine::new(Arc::new(cfg))
-            .flow(&store, &vec![0.5; 384], 1.0)
+            .flow(&store, &vec![0.5; 512], 1.0)
             .await
             .unwrap();
         let starts: Vec<f64> = lit.iter().filter(|l| l.depth == 0).map(|l| l.water).collect();
@@ -1598,8 +1598,8 @@ mod tests {
     #[tokio::test]
     async fn blocked_pipe_is_counted_and_softens_resistance() {
         let balls = vec![
-            sample_ball(0, 1.0, vec![0.5; 384]),
-            sample_ball(1, 1.0, vec![0.5; 384]),
+            sample_ball(0, 1.0, vec![0.5; 512]),
+            sample_ball(1, 1.0, vec![0.5; 512]),
         ];
         let pipes = vec![sample_pipe(0, 0, 1, 0.02)]; // resistance ≈ 0.98
         let store = temp_store();
@@ -1612,7 +1612,7 @@ mod tests {
         let engine = FlowEngine::new(Arc::new(cfg.clone()));
         let settle = SettleEngine::new(Arc::new(cfg));
 
-        let query = vec![0.5; 384];
+        let query = vec![0.5; 512];
         let sub = SubGraph { balls: balls.clone(), pipes: pipes.clone() };
 
         // 第 1 次：细管挡住

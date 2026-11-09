@@ -231,10 +231,21 @@ pub fn init(config_toml: String, db_path: Option<String>) -> napi::Result<()> {
         .unwrap_or_else(|| "dayu-mem.tdb".to_string());
 
     let config = Arc::new(config);
-    let core = DayuCore::new(Arc::clone(&config));
-    // 配了模型路径就用真实模型；没配或加载失败时 with_ort_embedding 内部回退到 mock
-    #[cfg(feature = "onnx")]
-    let core = core.with_ort_embedding();
+
+    // 嵌入后端由 `config.embedding_backend` 决定（onnx / http / test）。
+    // 不再有静默回退：选中什么就必须可用，否则 init 直接失败。
+    // init 是同步导出函数，而 http 后端探测维度是异步的，这里开一个临时 runtime 跑一次。
+    let dcore = {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|e| Error::new(Status::GenericFailure, format!("[RUNTIME] {e}")))?;
+        let backend = rt
+            .block_on(dayu_core::load_embedding_backend(&config))
+            .map_err(|e| Error::new(Status::GenericFailure, format!("[EMBEDDING_INIT] {e}")))?;
+        DayuCore::new(Arc::clone(&config), backend)
+            .map_err(|e| Error::new(Status::GenericFailure, format!("[CORE_INIT] {e}")))?
+    };
 
     // 日志初始化失败不阻断主流程：可观测性是增强，不是前提。
     // AlreadyInitialized 说明已有 subscriber（例如重复调 init），直接沿用。
@@ -253,14 +264,14 @@ pub fn init(config_toml: String, db_path: Option<String>) -> napi::Result<()> {
 
     // 存储维度跟随后端实际维度：模型 512 就开 512 的库，
     // 库已存在且维度不同时由 TriviumDB 拒绝打开（防止混用两套向量）。
-    let dim = core.embedding_dimension();
+    let dim = dcore.embedding_dimension();
     let storage = TriviumStorage::with_dim(&path, dim)
         .map_err(|e| Error::new(Status::GenericFailure, format!("[STORAGE_OPEN] {e}")))?;
 
     let mut guard = CORE
         .lock()
         .map_err(|e| Error::new(Status::GenericFailure, format!("[CORE_LOCK] {e}")))?;
-    *guard = Some(Arc::new(CoreState { core, storage, _observability: observability }));
+    *guard = Some(Arc::new(CoreState { core: dcore, storage, _observability: observability }));
     Ok(())
 }
 
@@ -480,6 +491,84 @@ pub async fn link_balls(a: u32, b: u32, weight: f64) -> napi::Result<u32> {
     Ok(id.0 as u32)
 }
 
+/// 批量建管道：三条平行数组（起点、终点、粗细）
+///
+/// 规模冒烟时逐条 `linkBalls` 太慢（每条一个事务），这里一次事务写入整批。
+/// 自连或端点不存在的边会被跳过，返回实际写入数。
+#[napi]
+pub async fn link_balls_batch(
+    a: Vec<u32>,
+    b: Vec<u32>,
+    weight: Vec<f64>,
+) -> napi::Result<u32> {
+    let st = state()?;
+    if a.len() != b.len() || a.len() != weight.len() {
+        return Err(Error::new(
+            Status::InvalidArg,
+            "[LINK_BATCH] a / b / weight 长度必须一致",
+        ));
+    }
+    let edges: Vec<(BallId, BallId, f64)> = a
+        .into_iter()
+        .zip(b)
+        .zip(weight)
+        .map(|((x, y), w)| (BallId(x as u64), BallId(y as u64), w))
+        .collect();
+    let written = st
+        .core
+        .link_balls_batch(&st.storage, &edges)
+        .await
+        .map_err(|e| Error::new(Status::GenericFailure, format!("[LINK_BATCH] {e}")))?;
+    Ok(written as u32)
+}
+
+/// 批量建球：三条平行数组（内容、嵌入、初始 size）
+///
+/// 一个事务写入整批，适合规模冒烟与批量导入。
+#[napi]
+pub async fn create_balls_batch(
+    contents: Vec<String>,
+    embeddings: Vec<Vec<f64>>,
+    sizes: Vec<f64>,
+) -> napi::Result<Vec<u32>> {
+    let st = state()?;
+    if contents.len() != embeddings.len() || contents.len() != sizes.len() {
+        return Err(Error::new(
+            Status::InvalidArg,
+            "[CREATE_BATCH] contents / embeddings / sizes 长度必须一致",
+        ));
+    }
+    let items: Vec<(String, Vec<f32>, f64)> = contents
+        .into_iter()
+        .zip(embeddings)
+        .zip(sizes)
+        .map(|((text, emb), size)| {
+            (text, emb.into_iter().map(|x| x as f32).collect(), size)
+        })
+        .collect();
+    let ids = st
+        .core
+        .create_balls_batch(&st.storage, &items)
+        .await
+        .map_err(|e| Error::new(Status::GenericFailure, format!("[CREATE_BATCH] {e}")))?;
+    Ok(ids.into_iter().map(|id| id.0 as u32).collect())
+}
+
+/// 批量嵌入：一次 HTTP 请求送多条文本，显著降低远程调用开销
+#[napi]
+pub async fn embed_batch(texts: Vec<String>) -> napi::Result<Vec<Vec<f64>>> {
+    let st = state()?;
+    let vectors = st
+        .core
+        .embed_batch(&texts)
+        .await
+        .map_err(|e| Error::new(Status::GenericFailure, format!("[EMBED_BATCH] {e}")))?;
+    Ok(vectors
+        .into_iter()
+        .map(|v| v.into_iter().map(|x| x as f64).collect())
+        .collect())
+}
+
 /// 读单个球
 #[napi]
 pub async fn get_ball(id: u32) -> napi::Result<Option<BallDto>> {
@@ -564,7 +653,11 @@ pub async fn archive_sweep(
             if let Some(n) = max_balls {
                 cfg.max_active_balls = n as usize;
             }
-            let scoped = DayuCore::new(Arc::new(cfg));
+            let scoped = DayuCore::new(
+                Arc::new(cfg),
+                Arc::clone(st.core.embedding_backend()),
+            )
+            .map_err(|e| Error::new(Status::GenericFailure, format!("[CORE_INIT] {e}")))?;
             scoped
                 .archive_sweep(&st.storage)
                 .await
@@ -648,9 +741,10 @@ pub async fn get_stats() -> napi::Result<StatsDto> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn init_with_valid_config() {
-        let toml = r#"
+    /// 最小合法配置模板；模型路径由调用方填入
+    fn config_toml(model: &str, tokenizer: &str) -> String {
+        format!(
+            r#"
 max_flow_depth = 5
 max_lit_ball_count = 50
 start_top_n = 3
@@ -669,8 +763,8 @@ min_reinforcement_threshold = 0.01
 pipe_strengthen_factor = 0.05
 min_pipe_reinforce_threshold = 0.005
 # embedding_dim 省略时以模型实际输出为准
-embedding_model_path = ""
-embedding_tokenizer_path = ""
+embedding_model_path = "{model}"
+embedding_tokenizer_path = "{tokenizer}"
 injection_mode = "Token"
 supplement_threshold = 0.45
 split_mode = "Weighted"
@@ -683,10 +777,54 @@ token_budget = 2048
 max_balls_per_inject = 5
 render_clear_threshold = 0.7
 impression_threshold = 0.4
-"#;
+"#
+        )
+    }
+
+    /// 未配置模型路径时必须失败：系统已无 mock 回退
+    #[test]
+    fn init_without_model_path_fails() {
+        let dir = dayu_testkit::temp_dir("napi-");
+        let path = dir.join("no-model.tdb");
+        assert!(
+            init(
+                config_toml("", ""),
+                Some(path.to_str().unwrap().to_string())
+            )
+            .is_err(),
+            "未配置模型路径时 init 应失败（无 mock 回退）"
+        );
+    }
+
+    /// 配置合法且模型可用时 init 应成功；模型不存在时跳过
+    #[test]
+    fn init_with_valid_config() {
+        let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("无法定位 workspace 根目录")
+            .to_path_buf();
+        let model = std::env::var("DAYU_EMBEDDING_MODEL_PATH").map_or_else(
+            |_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/onnx/model.onnx"),
+            std::path::PathBuf::from,
+        );
+        let tokenizer = std::env::var("DAYU_EMBEDDING_TOKENIZER_PATH").map_or_else(
+            |_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/tokenizer.json"),
+            std::path::PathBuf::from,
+        );
+        if !model.exists() || !tokenizer.exists() {
+            eprintln!("跳过 init_with_valid_config: 模型文件不存在");
+            return;
+        }
+
+        let toml = config_toml(
+            &model.to_string_lossy().replace('\\', "/"),
+            &tokenizer.to_string_lossy().replace('\\', "/"),
+        );
         let dir = dayu_testkit::temp_dir("napi-");
         let path = dir.join("t.tdb");
-        assert!(init(toml.to_string(), Some(path.to_str().unwrap().to_string())).is_ok());
+        let result = init(toml, Some(path.to_string_lossy().to_string()));
+        assert!(result.is_ok(), "init 应成功，实际错误: {:?}", result.err());
     }
 
     #[test]

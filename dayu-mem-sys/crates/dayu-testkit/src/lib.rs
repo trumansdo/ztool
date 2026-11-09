@@ -6,9 +6,6 @@
 use chrono::Utc;
 use dayu_domain::types::*;
 use dayu_domain::traits::*;
-use dayu_domain::error::*;
-use std::collections::HashMap;
-use async_trait::async_trait;
 
 // ============================================================
 // 测试目录
@@ -101,7 +98,7 @@ pub fn sample_ball_with_content(id: u64, size: f64, embedding: Vec<f32>, texts: 
 pub fn sample_balls(count: u64) -> Vec<Ball> {
     (0..count)
         .map(|i| {
-            let emb = vec![(i + 1) as f32 / count as f32; 384];
+            let emb = vec![(i + 1) as f32 / count as f32; 512];
             sample_ball(i, 1.0 + (i as f64 * 0.5), emb)
         })
         .collect()
@@ -220,11 +217,11 @@ pub fn build_thick_pipe_chain(n: u64) -> (Vec<Ball>, Vec<Pipe>) {
 
 /// 构建星型子图：中心球连接所有外围球
 pub fn build_star_graph(center_id: u64, satellite_count: u64) -> (Vec<Ball>, Vec<Pipe>) {
-    let mut balls = vec![sample_ball(center_id, 5.0, vec![0.5; 384])];
+    let mut balls = vec![sample_ball(center_id, 5.0, vec![0.5; 512])];
     let mut pipes = Vec::new();
     for i in 0..satellite_count {
         let sid = center_id + 1 + i;
-        balls.push(sample_ball(sid, 1.0, vec![0.1 * (i + 1) as f32; 384]));
+        balls.push(sample_ball(sid, 1.0, vec![0.1 * (i + 1) as f32; 512]));
         pipes.push(sample_pipe(i, center_id, sid, 0.3));
     }
     (balls, pipes)
@@ -243,48 +240,7 @@ impl Clock for MockClock {
     }
 }
 
-// Re-export from dayu-embedding for backward compatibility
-pub use dayu_embedding::MockEmbeddingBackend;
-pub use dayu_embedding::FixedEmbeddingBackend;
 
-/// Mock 判别器后端
-pub struct MockJudgeBackend {
-    /// 预设裁决：key = 候选文本前缀
-    pub verdicts: HashMap<String, Verdict>,
-}
-
-impl Default for MockJudgeBackend {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl MockJudgeBackend {
-    pub fn new() -> Self {
-        Self { verdicts: HashMap::new() }
-    }
-
-    pub fn with_verdict(mut self, prefix: &str, verdict: Verdict) -> Self {
-        self.verdicts.insert(prefix.to_string(), verdict);
-        self
-    }
-}
-
-#[async_trait]
-impl JudgeBackend for MockJudgeBackend {
-    async fn judge(&self, input: &JudgeInput) -> Result<Verdict, JudgeError> {
-        for (prefix, verdict) in &self.verdicts {
-            if input.candidate_text.starts_with(prefix.as_str()) {
-                return Ok(verdict.clone());
-            }
-        }
-        Ok(sample_verdict_skip())
-    }
-
-    fn backend_kind(&self) -> BackendKind {
-        BackendKind::Mock
-    }
-}
 
 // ============================================================
 // 断言辅助
@@ -347,7 +303,7 @@ mod tests {
 
     #[test]
     fn sample_ball_has_correct_id() {
-        let ball = sample_ball(42, 3.0, vec![0.1; 384]);
+        let ball = sample_ball(42, 3.0, vec![0.1; 512]);
         assert_eq!(ball.id, BallId(42));
         assert_eq!(ball.ball_stored_size, 3.0);
         assert_eq!(ball.status, BallStatus::Active);
@@ -366,21 +322,5 @@ mod tests {
         let (balls, pipes) = build_chain_graph(5);
         assert_eq!(balls.len(), 5);
         assert_eq!(pipes.len(), 4);
-    }
-
-    #[test]
-    fn mock_embedding_is_deterministic() {
-        let backend = MockEmbeddingBackend::new(384);
-        let e1 = backend.deterministic_embed("hello");
-        let e2 = backend.deterministic_embed("hello");
-        assert_eq!(e1, e2);
-    }
-
-    #[test]
-    fn mock_embedding_different_texts_differ() {
-        let backend = MockEmbeddingBackend::new(384);
-        let e1 = backend.deterministic_embed("hello");
-        let e2 = backend.deterministic_embed("world");
-        assert_ne!(e1, e2);
     }
 }

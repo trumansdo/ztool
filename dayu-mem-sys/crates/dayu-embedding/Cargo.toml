@@ -13,10 +13,16 @@ rand = "0.8"
 ort = { workspace = true, optional = true }
 tokenizers = { workspace = true, optional = true }
 ndarray = { workspace = true, optional = true }
+mistralrs = { version = "0.8.1", optional = true }
+reqwest = { version = "0.12", features = ["json"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
 
 [features]
 default = []
 onnx = ["ort", "tokenizers", "ndarray"]
+gguf = ["mistralrs"]
+http = ["reqwest", "serde"]
+test-support = []
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }

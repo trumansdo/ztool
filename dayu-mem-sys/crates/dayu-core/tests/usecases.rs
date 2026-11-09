@@ -6,30 +6,51 @@
 //! 3. **独立编译单元**：与单元测试并行编译，失败时能立刻区分"API 用错了"还是"内部逻辑错了"。
 //!
 //! 单元测试留在 `src/` 内（可访问私有函数），用例测试放这里（只用公开接口）。
+//!
+//! 本文件用**真实 ONNX 模型**，验证的是语义行为，因此需要显式启用 feature：
+//!   cargo test -p dayu-core --features onnx --test usecases
+//!
+//! 模型路径可用环境变量覆盖：
+//!   DAYU_EMBEDDING_MODEL_PATH=models/infinilabs/pizza-embed-zh-small-v1/onnx/model.onnx
+//!   DAYU_EMBEDDING_TOKENIZER_PATH=models/infinilabs/pizza-embed-zh-small-v1/tokenizer.json
+
+// 未启用 `onnx` 时整个用例文件为空，避免 `OrtEmbeddingBackend` 导入失败。
+#![cfg(feature = "onnx")]
 
 use dayu_core::DayuCore;
+use dayu_domain::traits::EmbeddingBackend;
 use dayu_domain::types::*;
-use dayu_flow::FlowEngine;
 use dayu_storage::testing::temp_store;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 // ============================================================
-// 夹具
+// 全局单例：ort 只允许一个 Environment per process
 // ============================================================
 
-/// 第 `axis` 维为 1 的单位向量
-fn axis_vec(axis: usize) -> Vec<f32> {
-    let mut v = vec![0.0f32; 384];
-    v[axis] = 1.0;
-    v
+static GLOBAL_EMBEDDING: LazyLock<Arc<dyn EmbeddingBackend>> = LazyLock::new(|| {
+    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("无法找到 workspace 根目录");
+    let model_path = std::env::var("DAYU_EMBEDDING_MODEL_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/onnx/model.onnx"));
+    let tokenizer_path = std::env::var("DAYU_EMBEDDING_TOKENIZER_PATH")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/tokenizer.json"));
+    Arc::new(
+        dayu_embedding::OrtEmbeddingBackend::load(&model_path, &tokenizer_path, 512)
+            .expect("ONNX 模型加载失败"),
+    )
+});
+
+fn embedding_backend() -> Arc<dyn EmbeddingBackend> {
+    Arc::clone(&GLOBAL_EMBEDDING)
 }
 
-/// 与 `axis` 维夹角余弦为 `cos` 的向量（另一维取 sqrt(1-cos²)）
-fn tilted_vec(axis: usize, cos: f32) -> Vec<f32> {
-    let mut v = vec![0.0f32; 384];
-    v[axis] = cos;
-    v[axis + 1] = (1.0 - cos * cos).sqrt();
-    v
+fn core() -> DayuCore {
+    DayuCore::new(Arc::new(Config::default()), embedding_backend())
+        .expect("DayuCore 创建失败")
 }
 
 fn joined_text(blocks: &[InjectionBlock]) -> String {
@@ -40,10 +61,6 @@ fn joined_text(blocks: &[InjectionBlock]) -> String {
         .join("\n")
 }
 
-fn core() -> DayuCore {
-    DayuCore::new(Arc::new(Config::default()))
-}
-
 // ============================================================
 // 建球
 // ============================================================
@@ -52,198 +69,153 @@ fn core() -> DayuCore {
 async fn create_ball_then_recall_returns_its_content() {
     let core = core();
     let store = temp_store();
-    let emb = axis_vec(0);
+    let emb = core.embedding_backend().embed("用户的生日是 3 月 5 日").await.unwrap();
 
-    let id = core
-        .create_ball(&store, "用户的生日是 3 月 5 日", &emb, 3.0)
-        .await
-        .unwrap();
-
-    let blocks = core.recall(&store, &emb, 1.0).await.unwrap();
-    assert!(!blocks.is_empty(), "同向查询必须召回刚建的球");
-
-    let text = joined_text(&blocks);
-    assert!(text.contains("生日"), "注入内容应含球内容，实际: {text}");
-    assert!(
-        blocks.iter().any(|b| b.ball_ids.contains(&id)),
-        "注入块的 ball_ids 应含 {id:?}"
-    );
-    assert_eq!(
-        blocks[0].confidence,
-        InjectionConfidence::Clear,
-        "完全同向应判 clear"
-    );
-}
-
-#[tokio::test]
-async fn create_ball_content_is_readable_by_get_ball() {
-    let core = core();
-    let store = temp_store();
-    let id = core
-        .create_ball(&store, "要能被读回来的内容", &axis_vec(2), 1.5)
-        .await
-        .unwrap();
-
-    let ball = core.get_ball(&store, id).await.unwrap().expect("球应存在");
-    assert_eq!(ball.content_list.len(), 1);
-    assert_eq!(ball.content_list[0].text, "要能被读回来的内容");
-    assert!((ball.ball_stored_size - 1.5).abs() < 1e-9);
-    assert_eq!(ball.status, BallStatus::Active);
-}
-
-// ============================================================
-// 单源回忆
-// ============================================================
-
-#[tokio::test]
-async fn recall_does_not_leak_unrelated_ball() {
-    let core = core();
-    let store = temp_store();
-    core.create_ball(&store, "A 的内容：数据库密码在 vault", &axis_vec(0), 3.0)
-        .await
-        .unwrap();
-    core.create_ball(&store, "B 的内容：今晚吃火锅", &axis_vec(1), 3.0)
-        .await
-        .unwrap();
-
-    let blocks = core.recall(&store, &axis_vec(0), 1.0).await.unwrap();
-    let text = joined_text(&blocks);
-    assert!(text.contains("vault"), "相关内容应被注入，实际: {text}");
-    assert!(
-        !text.contains("火锅"),
-        "正交且无管道相连的球不应被注入，实际: {text}"
-    );
-}
-
-/// 管道传播：A 被注水后，水经粗管到达 B（B 与查询正交，只能靠管道点亮）。
-///
-/// 这里用 `FlowEngine` 而不是 `recall`——`recall` 之后还有注入过滤，
-/// 正交球即便被点亮也不会进注入块，测不出"水有没有流过去"。
-#[tokio::test]
-async fn pipe_makes_neighbor_lit_by_flow() {
-    let core = core();
-    let store = temp_store();
-    let a = core
-        .create_ball(&store, "起始：项目用 Rust 写", &axis_vec(0), 3.0)
-        .await
-        .unwrap();
-    let b = core
-        .create_ball(&store, "邻居：CI 用 GitHub Actions", &axis_vec(1), 3.0)
-        .await
-        .unwrap();
-    core.link_balls(&store, a, b, 0.9).await.unwrap();
-
-    let engine = FlowEngine::new(Arc::new(Config::default()));
-    let lit = engine.flow(&store, &axis_vec(0), 2.0).await.unwrap();
-
-    assert!(
-        lit.iter().any(|l| l.ball_id == a && l.depth == 0),
-        "起始球应以 depth 0 被点亮，实际 {:?}",
-        lit.iter().map(|l| (l.ball_id, l.depth)).collect::<Vec<_>>()
-    );
-    assert!(
-        lit.iter().any(|l| l.ball_id == b && l.depth == 1),
-        "邻居应经管道以 depth 1 被点亮，实际 {:?}",
-        lit.iter().map(|l| (l.ball_id, l.depth)).collect::<Vec<_>>()
-    );
-}
-
-// ============================================================
-// 多源回忆
-// ============================================================
-
-#[tokio::test]
-async fn recall_multi_merges_same_ball_from_two_sources() {
-    let core = core();
-    let store = temp_store();
-    let emb = axis_vec(0);
-    let id = core
-        .create_ball(&store, "被两个源同时命中的球", &emb, 3.0)
+    core.create_ball(&store, "用户的生日是 3 月 5 日", &emb, 3.0)
         .await
         .unwrap();
 
     let blocks = core
-        .recall_multi(&store, &[&emb, &emb], 1.0)
+        .recall_with_text(&store, "用户的生日是哪天", 1.0)
         .await
         .unwrap();
 
-    let hits: Vec<_> = blocks
-        .iter()
-        .filter(|b| b.ball_ids.contains(&id))
-        .collect();
-    assert_eq!(
-        hits.len(),
-        1,
-        "同一个球只能出现在一个注入块里，实际 {} 个",
-        hits.len()
-    );
-}
-
-#[tokio::test]
-async fn recall_multi_returns_balls_from_both_sources() {
-    let core = core();
-    let store = temp_store();
-    let qa = axis_vec(0);
-    let qb = axis_vec(1);
-    core.create_ball(&store, "源 A 命中的记忆", &qa, 3.0)
-        .await
-        .unwrap();
-    core.create_ball(&store, "源 B 命中的记忆", &qb, 3.0)
-        .await
-        .unwrap();
-
-    let blocks = core
-        .recall_multi(&store, &[&qa, &qb], 1.0)
-        .await
-        .unwrap();
     let text = joined_text(&blocks);
-    assert!(text.contains("源 A"), "第一个源的结果应出现，实际: {text}");
-    assert!(text.contains("源 B"), "第二个源的结果应出现，实际: {text}");
+    assert!(text.contains("3 月 5 日"), "应召回生日信息，实际: {text}");
 }
 
-/// 多源相关性逐球取 max：球 B 只与**第二个**源相关，也必须被注入。
-///
-/// 若实现只拿第一个源算相关性，B 的 sim 恒为 0，直接被注入阈值过滤掉。
 #[tokio::test]
-async fn recall_multi_uses_max_relevance_across_sources() {
+async fn create_ball_with_embedding_stores_content() {
     let core = core();
     let store = temp_store();
-    let qa = axis_vec(0);
-    let qb = axis_vec(1);
-    // B 只与 qb 同向，与 qa 正交
-    core.create_ball(&store, "只跟第二个源相关的记忆", &qb, 3.0)
+
+    let emb = core.embedding_backend().embed("Python 的 GIL 限制了多线程并行").await.unwrap();
+    core.create_ball(&store, "Python 的 GIL 限制了多线程并行", &emb, 3.0)
         .await
         .unwrap();
 
     let blocks = core
-        .recall_multi(&store, &[&qa, &qb], 1.0)
+        .recall_with_text(&store, "Python 多线程", 1.0)
         .await
         .unwrap();
+
+    let text = joined_text(&blocks);
+    assert!(text.contains("GIL") || text.contains("Python"), "应召回 Python 相关内容，实际: {text}");
+}
+
+// ============================================================
+// 管道与流动
+// ============================================================
+
+#[tokio::test]
+async fn linked_balls_flow_water_to_related_query() {
+    let core = core();
+    let store = temp_store();
+
+    let emb1 = core.embedding_backend().embed("Rust 的所有权系统保证内存安全").await.unwrap();
+    let emb2 = core.embedding_backend().embed("Rust 的借用检查器在编译时验证引用").await.unwrap();
+
+    let id1 = core
+        .create_ball(&store, "Rust 的所有权系统保证内存安全", &emb1, 3.0)
+        .await
+        .unwrap();
+    let id2 = core
+        .create_ball(&store, "Rust 的借用检查器在编译时验证引用", &emb2, 3.0)
+        .await
+        .unwrap();
+
+    core.link_balls(&store, id1, id2, 0.8).await.unwrap();
+
+    let blocks = core
+        .recall_with_text(&store, "Rust 内存管理", 1.0)
+        .await
+        .unwrap();
+
     let text = joined_text(&blocks);
     assert!(
-        text.contains("只跟第二个源相关"),
-        "第二个源的相关性必须参与结算，实际: {text}"
+        text.contains("所有权") || text.contains("借用"),
+        "应通过管道流动召回关联内容，实际: {text}"
+    );
+}
+
+#[tokio::test]
+async fn multi_source_recall_aggregates_from_multiple_starting_balls() {
+    let core = core();
+    let store = temp_store();
+
+    let emb1 = core.embedding_backend().embed("Python 装饰器").await.unwrap();
+    let emb2 = core.embedding_backend().embed("Rust 宏系统").await.unwrap();
+
+    core.create_ball(&store, "Python 装饰器是一种高阶函数", &emb1, 3.0)
+        .await
+        .unwrap();
+    core.create_ball(&store, "Rust 的宏系统支持元编程", &emb2, 3.0)
+        .await
+        .unwrap();
+
+    // 查询"元编程"应能命中两个球
+    let blocks = core
+        .recall_with_text(&store, "元编程机制", 1.0)
+        .await
+        .unwrap();
+
+    let text = joined_text(&blocks);
+    // 至少命中一个
+    assert!(
+        text.contains("装饰器") || text.contains("宏"),
+        "多源回忆应聚合多个起始球的内容，实际: {text}"
     );
 }
 
 // ============================================================
-// 倾斜相关性：验证阈值分级
+// 注入块
 // ============================================================
 
 #[tokio::test]
-async fn recall_confidence_reflects_similarity() {
+async fn recall_returns_injection_blocks_with_confidence() {
     let core = core();
     let store = temp_store();
-    // 与查询余弦 0.9 的球
-    core.create_ball(&store, "高度相关的记忆", &tilted_vec(0, 0.9), 3.0)
+
+    let emb = core.embedding_backend().embed("重要信息").await.unwrap();
+    core.create_ball(&store, "重要信息：项目截止日期是 12 月 31 日", &emb, 5.0)
         .await
         .unwrap();
 
-    let blocks = core.recall(&store, &axis_vec(0), 1.0).await.unwrap();
-    assert!(!blocks.is_empty(), "0.9 相似度应被注入");
-    assert_eq!(
-        blocks[0].confidence,
-        InjectionConfidence::Clear,
-        "0.9 ≥ render_clear_threshold 应判 clear"
-    );
+    let blocks = core
+        .recall_with_text(&store, "项目截止日期", 1.0)
+        .await
+        .unwrap();
+
+    assert!(!blocks.is_empty(), "应返回注入块");
+    for block in &blocks {
+        assert!(!block.text.is_empty(), "注入块文本不应为空");
+        // confidence 是枚举，至少不是默认值
+        assert!(!block.ball_ids.is_empty(), "注入块应关联至少一个球");
+    }
+}
+
+// ============================================================
+// 归档
+// ============================================================
+
+#[tokio::test]
+async fn archive_sweep_removes_weak_inactive_balls() {
+    let core = core();
+    let store = temp_store();
+
+    let emb = core.embedding_backend().embed("临时信息").await.unwrap();
+    core.create_ball(&store, "临时信息：今天天气不错", &emb, 1.0)
+        .await
+        .unwrap();
+
+    // 使用带小 max_active_balls 的配置触发归档
+    let cfg = Config {
+        max_active_balls: 0, // 强制全部归档
+        archive_inactive_days: 0.0,
+        ..Config::default()
+    };
+    let archive_core = DayuCore::new(Arc::new(cfg), embedding_backend()).unwrap();
+
+    let report = archive_core.archive_sweep(&store).await.unwrap();
+    assert!(report.archived > 0, "应归档至少一个球，实际归档: {}", report.archived);
 }

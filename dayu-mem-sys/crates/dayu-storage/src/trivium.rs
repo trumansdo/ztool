@@ -34,7 +34,7 @@ fn to_ball(id: NodeId) -> BallId {
     BallId(id.saturating_sub(1))
 }
 /// 默认向量维度（与 `Config::embedding_dim` 默认值一致）
-const DEFAULT_DIM: usize = 384;
+const DEFAULT_DIM: usize = 512;
 
 // ============================================================
 // 编码 / 解码
@@ -490,7 +490,7 @@ mod tests {
     #[tokio::test]
     async fn trivium_storage_insert_and_get() {
         let (store, _dir) = temp_store();
-        let ball = sample_ball(1, 3.0, vec![0.1; 384]);
+        let ball = sample_ball(1, 3.0, vec![0.1; 512]);
 
         let mut tx = store.begin_transaction().await.unwrap();
         tx.upsert_ball(&ball).await.unwrap();
@@ -499,13 +499,13 @@ mod tests {
         let got = store.get_ball(BallId(1)).await.unwrap().unwrap();
         assert_eq!(got.id, BallId(1));
         assert!((got.ball_stored_size - 3.0).abs() < 1e-9);
-        assert_eq!(got.embedding.len(), 384);
+        assert_eq!(got.embedding.len(), 512);
     }
 
     #[tokio::test]
     async fn trivium_storage_rollback() {
         let (store, _dir) = temp_store();
-        let ball = sample_ball(1, 3.0, vec![0.1; 384]);
+        let ball = sample_ball(1, 3.0, vec![0.1; 512]);
 
         let mut tx = store.begin_transaction().await.unwrap();
         tx.upsert_ball(&ball).await.unwrap();
@@ -522,7 +522,7 @@ mod tests {
 
         {
             let store = TriviumStorage::new(&path_str).unwrap();
-            let ball = sample_ball(7, 4.5, vec![0.2; 384]);
+            let ball = sample_ball(7, 4.5, vec![0.2; 512]);
             let mut tx = store.begin_transaction().await.unwrap();
             tx.upsert_ball(&ball).await.unwrap();
             tx.commit().await.unwrap();
@@ -538,7 +538,7 @@ mod tests {
     #[tokio::test]
     async fn trivium_storage_increment_size() {
         let (store, _dir) = temp_store();
-        let ball = sample_ball(1, 3.0, vec![0.1; 384]);
+        let ball = sample_ball(1, 3.0, vec![0.1; 512]);
         let mut tx = store.begin_transaction().await.unwrap();
         tx.upsert_ball(&ball).await.unwrap();
         tx.commit().await.unwrap();
@@ -556,7 +556,7 @@ mod tests {
     #[tokio::test]
     async fn trivium_storage_increment_clamped() {
         let (store, _dir) = temp_store();
-        let mut ball = sample_ball(1, 3.0, vec![0.1; 384]);
+        let mut ball = sample_ball(1, 3.0, vec![0.1; 512]);
         ball.ball_size_ceiling = 5.0;
         let mut tx = store.begin_transaction().await.unwrap();
         tx.upsert_ball(&ball).await.unwrap();
@@ -575,8 +575,8 @@ mod tests {
     #[tokio::test]
     async fn trivium_storage_load_subgraph_chain() {
         let (store, _dir) = temp_store();
-        let a = sample_ball(1, 1.0, vec![0.1; 384]);
-        let b = sample_ball(2, 1.0, vec![0.2; 384]);
+        let a = sample_ball(1, 1.0, vec![0.1; 512]);
+        let b = sample_ball(2, 1.0, vec![0.2; 512]);
         let pipe = sample_pipe(1, 1, 2, 0.7);
 
         let mut tx = store.begin_transaction().await.unwrap();
@@ -594,9 +594,9 @@ mod tests {
     #[tokio::test]
     async fn trivium_storage_search_by_embedding() {
         let (store, _dir) = temp_store();
-        let mut a = sample_ball(1, 1.0, vec![0.0; 384]);
+        let mut a = sample_ball(1, 1.0, vec![0.0; 512]);
         a.embedding[0] = 1.0;
-        let mut b = sample_ball(2, 1.0, vec![0.0; 384]);
+        let mut b = sample_ball(2, 1.0, vec![0.0; 512]);
         b.embedding[1] = 1.0;
 
         let mut tx = store.begin_transaction().await.unwrap();
@@ -604,7 +604,7 @@ mod tests {
         tx.upsert_ball(&b).await.unwrap();
         tx.commit().await.unwrap();
 
-        let mut q = vec![0.0f32; 384];
+        let mut q = vec![0.0f32; 512];
         q[0] = 1.0;
         let hits = store.search_by_embedding(&q, 2).await.unwrap();
         assert_eq!(hits[0].0, BallId(1), "同向球应排第一");
@@ -615,8 +615,8 @@ mod tests {
     #[tokio::test]
     async fn trivium_storage_active_ball_count() {
         let (store, _dir) = temp_store();
-        let a = sample_ball(1, 1.0, vec![0.1; 384]);
-        let mut b = sample_ball(2, 1.0, vec![0.2; 384]);
+        let a = sample_ball(1, 1.0, vec![0.1; 512]);
+        let mut b = sample_ball(2, 1.0, vec![0.2; 512]);
         b.status = BallStatus::Archived;
 
         let mut tx = store.begin_transaction().await.unwrap();
@@ -630,8 +630,8 @@ mod tests {
     #[tokio::test]
     async fn trivium_storage_pipe_operations() {
         let (store, _dir) = temp_store();
-        let a = sample_ball(1, 1.0, vec![0.1; 384]);
-        let b = sample_ball(2, 1.0, vec![0.2; 384]);
+        let a = sample_ball(1, 1.0, vec![0.1; 512]);
+        let b = sample_ball(2, 1.0, vec![0.2; 512]);
         let mut pipe = sample_pipe(1, 1, 2, 0.5);
 
         let mut tx = store.begin_transaction().await.unwrap();
