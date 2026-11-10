@@ -19,6 +19,12 @@ use std::sync::Arc;
 
 use crate::loss::LossModel;
 
+/// 起始球候选超采倍数（仅在开启同义去重时生效）
+///
+/// 去重会丢弃近似副本，若只按 `start_top_n` 取候选，副本一多就会只剩 1 个起始球。
+/// 4 倍足够覆盖「同一句话被记录多次」的常见情况，检索成本仍是常数级。
+const START_CANDIDATE_OVERSAMPLE: usize = 4;
+
 /// 按扩散区域重叠度对源做连通分组
 ///
 /// 重叠度 = |A∩B| / |A∪B|；重叠关系有传递性（A↔B、B↔C → 三者同组）。
@@ -337,9 +343,14 @@ impl FlowEngine {
         storage: &dyn StorageBackend,
         embedding: &[f32],
     ) -> Result<Vec<(BallId, f64)>, FlowError> {
-        let candidates = storage
-            .search_by_embedding(embedding, self.config.start_top_n)
-            .await?;
+        // 多取候选：去重会丢掉一部分，只取 `start_top_n` 个候选会让去重后
+        // 只剩 1 个起始球（候选全是同一句话的副本）。先超采再去重截断。
+        let fetch_n = if self.config.start_dedupe_threshold > 0.0 {
+            self.config.start_top_n.saturating_mul(START_CANDIDATE_OVERSAMPLE)
+        } else {
+            self.config.start_top_n
+        };
+        let candidates = storage.search_by_embedding(embedding, fetch_n).await?;
 
         let best = candidates
             .iter()
@@ -360,13 +371,21 @@ impl FlowEngine {
             .map(|(id, sim)| (id, sim as f64))
             .collect();
 
+        // 同义去重：`start_top_n` 的预算会被「同一句话的不同写法」吃光。
+        // 候选已按余弦降序，贪心保留——与已选球余弦 ≥ 阈值的候选直接跳过。
+        // 只比球向量，不看内容：阈值必须高于语义反转（实测 0.828），否则会把
+        // 「我喜欢」和「我不喜欢」当成重复。同义改写的合并交给离线任务。
+        let mut selected = self.dedupe_starts(filtered, storage).await?;
+        selected.truncate(self.config.start_top_n);
+
         if tracing::enabled!(tracing::Level::DEBUG) {
             tracing::debug!(
-                candidates = filtered.len(),
+                candidates = selected.len(),
                 threshold = self.config.start_ball_threshold,
+                dedupe_threshold = self.config.start_dedupe_threshold,
                 relative_floor,
                 best,
-                balls = ?filtered
+                balls = ?selected
                     .iter()
                     .map(|(id, sim)| format!("{}@{:.3}", id.0, sim))
                     .collect::<Vec<_>>(),
@@ -374,7 +393,64 @@ impl FlowEngine {
             );
         }
 
-        Ok(filtered)
+        Ok(selected)
+    }
+
+    /// 起始球同义去重
+    ///
+    /// `threshold <= 0` 时不去重。否则按余弦降序贪心：候选与任一已选球的
+    /// 余弦 ≥ `threshold` 就丢弃。复杂度 O(已选数 × 候选数)，候选已由检索截断。
+    async fn dedupe_starts(
+        &self,
+        candidates: Vec<(BallId, f64)>,
+        storage: &dyn StorageBackend,
+    ) -> Result<Vec<(BallId, f64)>, FlowError> {
+        let threshold = self.config.start_dedupe_threshold;
+        if threshold <= 0.0 || candidates.len() < 2 {
+            return Ok(candidates);
+        }
+
+        // 一次性取出候选向量，避免逐条查库
+        let ids: Vec<BallId> = candidates.iter().map(|(id, _)| *id).collect();
+        let vectors: Vec<(BallId, Vec<f32>)> = storage
+            .get_balls(&ids)
+            .await?
+            .into_iter()
+            .map(|b| (b.id, b.embedding))
+            .collect();
+
+        let mut selected: Vec<(BallId, f64)> = Vec::with_capacity(candidates.len());
+        let mut selected_vecs: Vec<Vec<f32>> = Vec::with_capacity(candidates.len());
+        let mut dropped = 0usize;
+
+        for (id, sim) in candidates {
+            let Some((_, vec)) = vectors.iter().find(|(vid, _)| *vid == id) else {
+                // 向量取不到（球刚被删）就保留，不在这一步做一致性判断
+                selected.push((id, sim));
+                continue;
+            };
+            let too_similar = selected_vecs.iter().any(|kept| {
+                dayu_domain::math::cosine_similarity(vec, kept)
+                    .is_some_and(|c| c as f64 >= threshold)
+            });
+            if too_similar {
+                dropped += 1;
+                continue;
+            }
+            selected.push((id, sim));
+            selected_vecs.push(vec.clone());
+        }
+
+        if dropped > 0 {
+            tracing::debug!(
+                dropped,
+                kept = selected.len(),
+                threshold,
+                "起始球同义去重"
+            );
+        }
+
+        Ok(selected)
     }
 
     /// 把可分配水量分到各条出边。
@@ -1028,6 +1104,7 @@ mod tests {
 
         let mut config = (*sample_config()).clone();
         config.start_ball_relative_threshold = 0.0; // 本测试只验注水分配，放开相对阈值
+        config.start_dedupe_threshold = 0.0; // 三个球在 2 维空间里互相近似，本测试不验去重
         let total_water = config.total_water_budget; // significance = 1.0
         let engine = FlowEngine::new(std::sync::Arc::new(config));
         let lit = engine.flow(&store, &query, 1.0).await.unwrap();
@@ -1443,6 +1520,7 @@ mod tests {
 
         let mut config = (*sample_config()).clone();
         config.start_ball_relative_threshold = 0.0; // 本测试只验绝对阈值与 Top-K
+        config.start_dedupe_threshold = 0.0; // 本测试不验去重（候选间余弦可达 0.97）
         let lit = FlowEngine::new(std::sync::Arc::new(config))
             .flow(&store, &query, 1.0)
             .await
@@ -1452,6 +1530,93 @@ mod tests {
         ids.sort();
         assert_eq!(ids, vec![0, 1, 2], "起始球集合应为余弦 0.9/0.7/0.5 的三个，实际 {ids:?}");
         assert!(lit.iter().all(|l| l.depth == 0), "无管道时只应点亮起始球");
+    }
+
+    // ============================================================
+    // 起始球同义去重
+    // ============================================================
+
+    /// 两个几乎逐字相同的球（副本）不应同时占据起始球名额。
+    /// 实测副本余弦 0.969，默认阈值 0.95 应挡住第二个。
+    #[tokio::test]
+    async fn near_duplicate_start_balls_are_deduped() {
+        let store = temp_store();
+        let query = vec![1.0, 0.0, 0.0, 0.0];
+        // 两个球与 query 余弦都是 0.95，彼此余弦 0.998（近似副本）
+        let mk = |id: u64, tilt: f32| {
+            sample_ball(id, 1.0, vec![0.95, tilt, 0.0, 0.0])
+        };
+        seed(&store, vec![mk(0, 0.3122), mk(1, 0.3100)], vec![]).await;
+
+        let mut config = (*sample_config()).clone();
+        config.start_ball_relative_threshold = 0.0;
+        config.start_top_n = 5;
+        config.start_dedupe_threshold = 0.95;
+        let lit = FlowEngine::new(std::sync::Arc::new(config))
+            .flow(&store, &query, 1.0)
+            .await
+            .unwrap();
+
+        let starts: Vec<u64> = lit.iter().filter(|l| l.depth == 0).map(|l| l.ball_id.0).collect();
+        assert_eq!(starts.len(), 1, "近似副本只应保留一个起始球，实际 {starts:?}");
+    }
+
+    /// 语义不同（余弦低于阈值）的球必须都保留 —— 去重不能误伤多样性。
+    #[tokio::test]
+    async fn semantically_distinct_start_balls_are_kept() {
+        let store = temp_store();
+        let query = vec![1.0, 0.0, 0.0, 0.0];
+        // 与 query 余弦 0.95 / 0.92，彼此余弦约 0.75（不同记忆）
+        seed(
+            &store,
+            vec![
+                sample_ball(0, 1.0, vec![0.95, 0.3122, 0.0, 0.0]),
+                sample_ball(1, 1.0, vec![0.92, -0.39, 0.0, 0.0]),
+            ],
+            vec![],
+        )
+        .await;
+
+        let mut config = (*sample_config()).clone();
+        config.start_ball_relative_threshold = 0.0;
+        config.start_top_n = 5;
+        config.start_dedupe_threshold = 0.95;
+        let lit = FlowEngine::new(std::sync::Arc::new(config))
+            .flow(&store, &query, 1.0)
+            .await
+            .unwrap();
+
+        let mut starts: Vec<u64> = lit.iter().filter(|l| l.depth == 0).map(|l| l.ball_id.0).collect();
+        starts.sort();
+        assert_eq!(starts, vec![0, 1], "语义不同的球都应保留，实际 {starts:?}");
+    }
+
+    /// `start_dedupe_threshold = 0` 时关闭去重。
+    #[tokio::test]
+    async fn dedupe_disabled_when_threshold_zero() {
+        let store = temp_store();
+        let query = vec![1.0, 0.0, 0.0, 0.0];
+        seed(
+            &store,
+            vec![
+                sample_ball(0, 1.0, vec![0.95, 0.3122, 0.0, 0.0]),
+                sample_ball(1, 1.0, vec![0.95, 0.3122, 0.0, 0.0]),
+            ],
+            vec![],
+        )
+        .await;
+
+        let mut config = (*sample_config()).clone();
+        config.start_ball_relative_threshold = 0.0;
+        config.start_top_n = 5;
+        config.start_dedupe_threshold = 0.0;
+        let lit = FlowEngine::new(std::sync::Arc::new(config))
+            .flow(&store, &query, 1.0)
+            .await
+            .unwrap();
+
+        let starts = lit.iter().filter(|l| l.depth == 0).count();
+        assert_eq!(starts, 2, "关闭去重后两个球都应成为起始球");
     }
 
     /// 强线索：查询与起始球余弦 ≥ 阈值时，总注水量放大 `strong_cue_multiplier` 倍。
@@ -1582,6 +1747,7 @@ mod tests {
 
         let mut cfg = (*dayu_testkit::sample_config()).clone();
         cfg.strong_cue_threshold = 0.8;
+        cfg.start_dedupe_threshold = 0.0; // 两球向量相同，本测试只验注水分配
 
         let lit = FlowEngine::new(Arc::new(cfg))
             .flow(&store, &vec![0.5; 512], 1.0)

@@ -126,6 +126,12 @@ pub fn validate_config(config: &Config) -> Result<(), ConfigError> {
             config.start_ball_relative_threshold
         )));
     }
+    if config.start_dedupe_threshold < 0.0 || config.start_dedupe_threshold > 1.0 {
+        return Err(ConfigError::Validation(format!(
+            "start_dedupe_threshold 必须在 [0,1] 范围内（0 = 关闭去重），当前: {}",
+            config.start_dedupe_threshold
+        )));
+    }
     if config.total_water_budget <= 0.0 {
         return Err(ConfigError::Validation(
             "total_water_budget 必须 > 0".into(),
@@ -291,6 +297,10 @@ max_lit_ball_count = 50
 start_top_n = 3
 start_ball_threshold = 0.3
 start_ball_relative_threshold = 0.85
+# 起始球去重：与已选起始球余弦 >= 此值则跳过（0 = 关闭）
+# 实测副本 0.969、口语/书面同义 0.976，但语义反转（喜欢/不喜欢）也有 0.828，
+# 因此只能卡在 0.95 附近：只去肉眼可辨的同一句，同义改写交给离线合并
+start_dedupe_threshold = 0.95
 total_water_budget = 1.0
 supplement_ratio = 0.2
 base_loss = 0.2

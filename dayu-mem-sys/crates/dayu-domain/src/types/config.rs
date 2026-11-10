@@ -25,7 +25,20 @@ pub struct Config {
     /// 余弦超过 0.3，导致起始球数量与图规模正相关。相对阈值让起始球
     /// 数量只取决于「与最佳命中的接近程度」，与图规模无关。
     pub start_ball_relative_threshold: f64,
+    /// 起始球去重阈值：候选与已选起始球的余弦 ≥ 此值时视为同一条记忆，跳过
+    ///
+    /// 为什么需要：`start_top_n` 的预算会被「同一句话的不同写法」吃光。
+    /// 实测（Qwen3-Embedding-4B）：加口语前缀的副本 0.969，口语/书面同义 0.976，
+    /// 而**语义反转**（喜欢/不喜欢）也有 0.828 —— 余弦分辨不了否定。
+    /// 所以阈值必须卡在 0.95 附近：只去掉肉眼可辨的同一句，同义改写交给离线合并。
+    ///
+    /// `0.0` 关闭去重。
+    pub start_dedupe_threshold: f64,
     /// 基础注水量
+    ///
+    /// 注意：注水量守恒——总量固定按余弦分给各起始球。
+    /// 起始球去重后球数减少，单个起始球分到的水会变多，扩散会变强，
+    /// 因此调整 `start_dedupe_threshold` 时需同步重调此值。
     pub total_water_budget: f64,
     /// 球自身补充比例
     pub supplement_ratio: f64,
@@ -203,6 +216,7 @@ impl Default for Config {
             start_top_n: 3,
             start_ball_threshold: 0.3,
             start_ball_relative_threshold: 0.85,
+            start_dedupe_threshold: 0.95,
             total_water_budget: 1.0,
             supplement_ratio: 0.2,
             max_supplement_ratio: 2.0,

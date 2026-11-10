@@ -31,6 +31,9 @@ strong_cue_multiplier = 3.0
 start_top_n = 5
 start_ball_threshold = 0.3
 start_ball_relative_threshold = 0.85
+# 起始球同义去重：与已选起始球余弦 >= 此值则跳过（0 = 关闭）
+# 实测副本 0.969、口语/书面同义 0.976，语义反转（喜欢/不喜欢）也有 0.828，故卡 0.95
+start_dedupe_threshold = 0.95
 
 # --- 损失 ---
 base_loss = 0.2
