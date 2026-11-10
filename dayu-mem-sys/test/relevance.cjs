@@ -287,8 +287,9 @@ const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length 
     );
   }
 
-  fs.writeFileSync(`test/relevance-result-${TAG}.json`, JSON.stringify({ summary, perQuery }, null, 2), 'utf8');
-  console.log(`明细已写入 test/relevance-result-${TAG}.json`);
+  const outName = `test/relevance-result-${TAG}-n${BALLS}-i${INJECT}.json`;
+  fs.writeFileSync(outName, JSON.stringify({ summary, perQuery }, null, 2), 'utf8');
+  console.log(`明细已写入 ${outName}`);
 })().catch((e) => {
   console.error('FATAL', e);
   process.exit(1);
