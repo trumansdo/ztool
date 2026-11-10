@@ -14,6 +14,11 @@ test/*
 !test/corpus.cjs
 !test/probe.cjs
 !test/scale-http.cjs
+!test/relevance.cjs
+!test/relevance-rate.cjs
+!test/relevance-ceiling.cjs
+!test/relevance-distinct.cjs
+!test/diag.cjs
 !test/config-http.example.toml
 # 本地真实配置含密钥，禁止入库
 test/config-http.toml
