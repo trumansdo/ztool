@@ -3,9 +3,13 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const dir = __dirname;
+const TAG = (() => {
+  const i = process.argv.indexOf('--tag');
+  return i >= 0 ? process.argv[i + 1] : 'http';
+})();
 const { CORPUS, QUERIES } = require(path.join(dir, 'corpus.cjs'));
-const cache = JSON.parse(fs.readFileSync(path.join(dir, 'embed-cache.json'), 'utf8'));
-const { summary, perQuery } = JSON.parse(fs.readFileSync(path.join(dir, 'relevance-result.json'), 'utf8'));
+const cache = JSON.parse(fs.readFileSync(path.join(dir, `embed-cache-${TAG}.json`), 'utf8'));
+const { summary, perQuery } = JSON.parse(fs.readFileSync(path.join(dir, `relevance-result-${TAG}.json`), 'utf8'));
 
 const DOMAINS = Object.keys(CORPUS);
 const LEADINS = ['', '记一下：', '补充一点：', '昨天想到：', '和同事聊到：', '看文章时记的：', '复盘：', '再确认一下：', '突然想起来：', '周会上提过：', '整理笔记：', '踩坑记录：', '值得记：', '睡前回顾：', '路上想到：', '技术分享里听到：', '文档里看到：', '实践下来：', '重新整理：', '给自己提醒：'];

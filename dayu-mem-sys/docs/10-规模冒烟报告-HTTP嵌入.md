@@ -6,6 +6,10 @@
 > 脚本：`test/scale-http.cjs`、语料 `test/corpus.cjs`
 > 原始数据：`test/scale-http-result.json`
 
+> ⚠️ **本文所有余弦阈值与相关率都是 Qwen3-Embedding-4B（2560 维）的绝对值。**
+> 换嵌入模型后分布尺度会变（0.6B 随机基线 0.3379 vs 4B 0.3689），
+> 固定阈值的相关率不可跨模型比较。跨模型对照见 `docs/11-嵌入模型对照.md`。
+
 ---
 
 ## 1. 为什么要重做

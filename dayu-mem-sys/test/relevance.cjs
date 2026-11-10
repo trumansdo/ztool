@@ -18,7 +18,17 @@ const repoRoot = path.resolve(__dirname, '..');
 process.chdir(repoRoot);
 
 const api = require(path.join(__dirname, 'dayu_test.node'));
-const baseToml = fs.readFileSync(path.join(__dirname, 'config-http.toml'), 'utf8');
+const CONFIG = (() => {
+  const i = process.argv.indexOf('--config');
+  return path.resolve(i >= 0 ? process.argv[i + 1] : 'test/config-http.toml');
+})();
+const TAG = (() => {
+  const i = process.argv.indexOf('--tag');
+  if (i >= 0) return process.argv[i + 1];
+  // 默认按配置文件名取 tag，保证不同嵌入模型的缓存/结果互不覆盖
+  return path.basename(CONFIG, '.toml').replace(/^config-/, '');
+})();
+const baseToml = fs.readFileSync(CONFIG, 'utf8');
 const { CORPUS, QUERIES } = require(path.join(__dirname, 'corpus.cjs'));
 
 function arg(name, def) {
@@ -93,7 +103,8 @@ function buildEdges(mems) {
   return { a, b, w };
 }
 
-const CACHE_PATH = path.join(__dirname, 'embed-cache.json');
+// 缓存必须按模型隔离：文本相同但模型不同，向量维度与语义空间都不同
+const CACHE_PATH = path.join(__dirname, `embed-cache-${TAG}.json`);
 let cache = fs.existsSync(CACHE_PATH) ? JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8')) : {};
 const hashOf = (t) => crypto.createHash('sha1').update(t).digest('hex');
 
@@ -126,7 +137,7 @@ const pct = (arr, p) => {
 const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 
 (async () => {
-  const tag = `rel-${BALLS}`;
+  const tag = `rel-${TAG}-${BALLS}`;
   for (const f of fs.readdirSync('test')) {
     if (f.startsWith(`${tag}.tdb`)) fs.unlinkSync(path.join('test', f));
   }
@@ -272,8 +283,8 @@ const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length 
     );
   }
 
-  fs.writeFileSync('test/relevance-result.json', JSON.stringify({ summary, perQuery }, null, 2), 'utf8');
-  console.log('\n明细已写入 test/relevance-result.json');
+  fs.writeFileSync(`test/relevance-result-${TAG}.json`, JSON.stringify({ summary, perQuery }, null, 2), 'utf8');
+  console.log(`明细已写入 test/relevance-result-${TAG}.json`);
 })().catch((e) => {
   console.error('FATAL', e);
   process.exit(1);
