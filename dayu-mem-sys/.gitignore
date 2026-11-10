@@ -7,24 +7,13 @@ Cargo.lock.bak
 *.tdb.*
 logs/
 
-# 测试产物（db / 日志 / 指标 / 本地配置）不入库
-# 但脚本、语料、示例配置、进度文档要入库（保证可复现）
-test/*
-!test/PROGRESS.md
-!test/corpus.cjs
-!test/probe.cjs
-!test/scale-http.cjs
-!test/relevance.cjs
-!test/relevance-rate.cjs
-!test/relevance-ceiling.cjs
-!test/relevance-compare.cjs
-!test/relevance-distinct.cjs
-!test/diag.cjs
-!test/config-http.example.toml
-!test/config-lms.toml
-# 本地真实配置含密钥，禁止入库
-test/config-http.toml
-!test/config-http.example.toml
+# 测试产物：一次性运行目录、长期库与向量缓存都不入库
+# 目录约定见 test/README.md——脚本、配置、语料、公共逻辑全部入库
+test/out/
+test/data/
+
+# 本地真实配置含密钥，禁止入库（模板见 config/http.example.toml）
+test/config/http.toml
 
 # napi 构建产物
 *.node

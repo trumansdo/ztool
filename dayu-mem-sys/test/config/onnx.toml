@@ -1,0 +1,10 @@
+# 本地 ONNX 嵌入：infinilabs pizza-embed-zh-small-v1（512 维）
+#
+# 需要 ONNX Runtime 动态库；未设置 ORT_DYLIB_PATH 时 lib/harness.cjs
+# 自动指向 models/onnxruntime/lib/onnxruntime.dll
+#
+# 构建：cargo build -p dayu-napi --release --no-default-features --features onnx
+
+embedding_backend = "onnx"
+embedding_model_path = "models/infinilabs/pizza-embed-zh-small-v1/onnx/model.onnx"
+embedding_tokenizer_path = "models/infinilabs/pizza-embed-zh-small-v1/tokenizer.json"

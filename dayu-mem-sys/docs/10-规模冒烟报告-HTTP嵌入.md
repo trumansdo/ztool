@@ -1,5 +1,20 @@
 # 规模冒烟报告：HTTP 嵌入后端全链路
 
+> ⚠️ **路径已于 2026-11-10 重构**（`test/` 目录重规划）。本文记录的是重构前的运行，
+> 文中脚本路径与产物路径为历史原样，**新路径见 `test/README.md`**。
+>
+> | 旧 | 新 |
+> |:--|:--|
+> | `test/scale-http.cjs` | `test/bin/scale.cjs --profile http` |
+> | `test/probe.cjs` | `test/bin/probe.cjs --profile http` |
+> | `test/relevance.cjs` | `test/bin/relevance.cjs --profile http` |
+> | `test/relevance-rate.cjs` | `test/bin/relevance-rate.cjs --run <运行目录>` |
+> | `test/config-http.toml` | `test/config/http.toml`（差异层，全量见 `config/base.toml`） |
+> | `test/config-lms.toml` | `test/config/lms.toml` |
+> | `test/scale-http-result.json` | `test/out/<运行目录>/result.json` |
+>
+> 旧产物归档在 `test/out/legacy-20261110/`。
+
 > 测试日期：2026-11-10
 > 嵌入模型：`Qwen/Qwen3-Embedding-4B`（SiliconFlow，2560 维，L2 归一化）
 > 后端：`embedding_backend = "http"`（无 ONNX / GGUF / 本地模型）

@@ -1,0 +1,12 @@
+# 远端 HTTP 嵌入（SiliconFlow Qwen3-Embedding-4B，2560 维）
+#
+# 复制为 config/http.toml 并填入真实密钥（该文件已被 .gitignore 排除）
+#
+# 构建：cargo build -p dayu-napi --release --no-default-features --features http
+
+embedding_backend = "http"
+# 留空则启动时探测一次（Qwen/Qwen3-Embedding-4B = 2560 维）
+# embedding_dim = 2560
+embedding_api_base = "https://api.siliconflow.cn/v1"
+embedding_api_key = "REPLACE_WITH_YOUR_KEY"
+embedding_api_model = "Qwen/Qwen3-Embedding-4B"

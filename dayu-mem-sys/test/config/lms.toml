@@ -1,0 +1,13 @@
+# 本机 LM Studio 嵌入（Qwen3-Embedding-0.6B，1024 维）
+#
+# 与 http.toml 的唯一差异是嵌入后端与模型——用于「只换嵌入模型」的对照实验。
+# 其余参数一律继承 base.toml，不允许在这里重复声明。
+#
+# 构建：cargo build -p dayu-napi --release --no-default-features --features http
+
+embedding_backend = "http"
+# 留空则启动时探测一次（Qwen3-Embedding-0.6B = 1024 维）
+# embedding_dim = 1024
+embedding_api_base = "http://127.0.0.1:1234/v1"
+embedding_api_key = "lm-studio"
+embedding_api_model = "text-embedding-qwen3-embedding-0.6b"

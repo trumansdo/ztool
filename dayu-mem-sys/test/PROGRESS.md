@@ -1,7 +1,8 @@
 # 测试进度与剩余工作
 
-> 更新时间：2026-11-10 00:30
+> 更新时间：2026-11-10 22:40
 > 当前状态：HTTP 嵌入后端 + 真实语料 + 五十至十万球规模冒烟全部跑通
+> **目录已于 2026-11-10 重构，见 `test/README.md`**
 
 ---
 
@@ -14,9 +15,9 @@
 | 移除 mock 后端（改用显式注入） | ✅ | `DayuCore::new(config, backend)` |
 | HTTP 嵌入后端（OpenAI 兼容） | ✅ | `crates/dayu-embedding/src/http.rs` |
 | 配置驱动后端选择 | ✅ | `embedding_backend = onnx / http / test` |
-| 连通性验证 | ✅ | `test/probe.cjs` |
+| 连通性验证 | ✅ | `test/bin/probe.cjs` |
 | 真实语料（15 领域 × 25 条） | ✅ | `test/corpus.cjs` |
-| 规模冒烟 50 / 500 / 5 000 / 50 000 / 100 000 | ✅ | `docs/10`、`test/scale-http-result.json` |
+| 规模冒烟 50 / 500 / 5 000 / 50 000 / 100 000 | ✅ | `docs/10`、`test/out/<运行目录>/result.json` |
 | 参数扫描（budget / start_top_n） | ✅ | `docs/10` §4 |
 | 相关率测量（召回 ∩ 相关 / 相关） | ✅ | `docs/10` §9 |
 | 起始球同义去重 | ✅ 已实现 | `Config.start_dedupe_threshold = 0.95` |
@@ -128,12 +129,15 @@
 
 ## 六、复现
 
+> 目录约定与命令全集见 `test/README.md`。
+
 ```bash
 cargo build -p dayu-napi --release --no-default-features --features http
 cp target/release/dayu_napi.dll test/dayu_test.node
-cp test/config-http.example.toml test/config-http.toml   # 填入 api key
-node test/probe.cjs
-node test/scale-http.cjs --ladder --budget 10 --top 5
+cp test/config/http.example.toml test/config/http.toml   # 填入 api key
+node test/bin/probe.cjs --profile http
+node test/bin/scale.cjs --profile http --ladder --budget 10 --top 5
 ```
 
-`test/` 下只有脚本、语料、示例配置入库；db / 日志 / 真实配置（含密钥）不入库。
+`test/` 下入库：脚本（`bin/`）、公共逻辑（`lib/`）、配置（`config/`）、语料（`corpus.cjs`）、说明（`README.md`）。
+不入库：`test/out/`（一次性产物）、`test/data/`（长期库与向量缓存）、`test/config/http.toml`（含密钥）。
