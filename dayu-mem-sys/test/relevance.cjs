@@ -38,6 +38,8 @@ function arg(name, def) {
 const BALLS = +arg('balls', 5000);
 const BUDGET = +arg('budget', 10);
 const TOP = +arg('top', 5);
+// 注入条数上限：默认放开（测召回/点亮质量）。设为 N 则测「只注入 N 条」时的实际质量。
+const INJECT = +arg('inject', 5000);
 const EMBED_CHUNK = 64;
 
 const DOMAINS = Object.keys(CORPUS);
@@ -137,7 +139,7 @@ const pct = (arr, p) => {
 const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0);
 
 (async () => {
-  const tag = `rel-${TAG}-${BALLS}`;
+  const tag = `rel-${TAG}-${BALLS}-i${INJECT}`;
   for (const f of fs.readdirSync('test')) {
     if (f.startsWith(`${tag}.tdb`)) fs.unlinkSync(path.join('test', f));
   }
@@ -148,7 +150,9 @@ const mean = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length 
     .replace(/^total_water_budget\s*=.*$/m, `total_water_budget = ${BUDGET}`)
     .replace(/^start_top_n\s*=.*$/m, `start_top_n = ${TOP}`)
     .replace(/^token_budget\s*=.*$/m, 'token_budget = 1000000')
-    .replace(/^max_balls_per_inject\s*=.*$/m, 'max_balls_per_inject = 5000')
+    .replace(/^max_balls_per_inject\s*=.*$/m, `max_balls_per_inject = ${INJECT}`)
+    // 注意：max_balls_per_inject 只在 BallCount 模式下生效；Token 模式下由 token_budget 截断
+    .replace(/^injection_mode\s*=.*$/m, `injection_mode = "${INJECT < 5000 ? 'BallCount' : 'Token'}"`)
     .replace(/^log_level\s*=.*$/m, 'log_level = "warn"')
     .replace(/^log_dir\s*=.*$/m, 'log_dir = "test/logs-http"');
 
