@@ -14,7 +14,9 @@ const path = require('path');
 
 const paths = require('../lib/paths.cjs');
 const harness = require('../lib/harness.cjs');
-const { expandCorpus, baseOf } = require('../lib/corpus.cjs');
+const { baseOf } = require('../lib/corpus.cjs');
+const datasetLib = require('../lib/dataset.cjs');
+const cacheLib = require('../lib/cache.cjs');
 const { cos, mean, hashOf, pctStr } = require('../lib/stats.cjs');
 
 const arg = (name, def) => {
@@ -38,12 +40,12 @@ function main() {
   const result = paths.readJson(path.join(runDir, 'result.json'));
   if (!result) throw new Error(`${runDir} 缺少 result.json`);
 
-  const cache = paths.readJson(path.resolve(paths.REPO_ROOT, meta.cache));
-  if (!cache) throw new Error(`缺少向量缓存 ${meta.cache}`);
+  const cache = cacheLib.load(path.resolve(paths.REPO_ROOT, meta.cache));
+  if (!cache.size) throw new Error(`缺少向量缓存 ${meta.cache}`);
 
   const BALLS = result.summary.balls;
-  const mems = expandCorpus(BALLS);
-  const vectors = mems.map((m) => cache[hashOf(m.text)]);
+  const mems = datasetLib.memories(datasetLib.load(result.summary.dataset ?? 'main'), BALLS);
+  const vectors = mems.map((m) => cache.get(hashOf(m.text)));
 
 // 基础句 → 副本下标
 const baseIndex = new Map();
@@ -55,7 +57,7 @@ mems.forEach((m, i) => {
 
 const rows = [];
 for (const p of result.perQuery) {
-  const qv = cache[hashOf(p.query)];
+  const qv = cache.get(hashOf(p.query));
   if (!qv) throw new Error(`缓存缺查询向量「${p.query}」`);
   const all = vectors.map((v) => cos(qv, v));
 

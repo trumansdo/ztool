@@ -17,7 +17,7 @@ const path = require('path');
 
 const paths = require('../lib/paths.cjs');
 const harness = require('../lib/harness.cjs');
-const { QUERIES, DOMAINS, BASE } = require('../lib/corpus.cjs');
+const datasetLib = require('../lib/dataset.cjs');
 const { mean, percentile, pctStr } = require('../lib/stats.cjs');
 
 const arg = (name, def) => {
@@ -26,8 +26,9 @@ const arg = (name, def) => {
 };
 
 const PROFILE = arg('profile', 'onnx');
+const DATASET = arg('dataset', 'main');
 const RESET = process.argv.includes('--reset');
-const SEED_SIZE = +arg('seed', 150); // 首次建库的球数（BASE 前 N 条）
+const SEED_SIZE = +arg('seed', 150); // 首次建库的球数（数据集前 N 条）
 const APPEND = +arg('append', 3); // 每轮追加的球数
 
 // ---------- 长期库状态 ----------
@@ -89,6 +90,7 @@ function checkInvariants({ stats, pipes, ballIds, prev }) {
 // ---------- 主流程 ----------
 
 (async () => {
+  const ds = datasetLib.load(DATASET);
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
   const history = readHistory();
@@ -103,7 +105,7 @@ function checkInvariants({ stats, pipes, ballIds, prev }) {
   }
 
   const isNew = !fs.existsSync(paths.MAIN_DB) || paths.dbBytes(paths.MAIN_DB) === 0;
-  const { api, dim } = await harness.init({ profile: PROFILE, reuseDb: true });
+  const { api, dim, identity } = await harness.init({ profile: PROFILE, reuseDb: true });
 
   // 维度变化 = 换了嵌入模型，旧向量不可用，必须重建而不是静默混用
   if (prev && prev.dim !== dim) {
@@ -116,16 +118,16 @@ function checkInvariants({ stats, pipes, ballIds, prev }) {
   // ---- 首次建库：铺基础语料 ----
   let seeded = 0;
   if (isNew) {
-    const mems = BASE.slice(0, SEED_SIZE);
+    const mems = datasetLib.memories(ds, SEED_SIZE);
     const { vectors } = await harness.embed(
       mems.map((m) => m.text),
-      { tag: PROFILE },
+      { identity, dataset: ds },
     );
     const { ids } = await harness.seedGraph(
       api,
       mems,
       vectors,
-      require('../lib/corpus.cjs').buildEdges(mems),
+      datasetLib.edges(ds, SEED_SIZE),
     );
     seeded = ids.length;
     console.log(`首次建库：${seeded} 球 / ${(await api.getStats()).activeBallCount} 活跃`);
@@ -133,15 +135,15 @@ function checkInvariants({ stats, pipes, ballIds, prev }) {
 
   // ---- 每轮追加：模拟「今天又记了几件事」 ----
   const round = history.length + 1;
-  const domain = DOMAINS[round % DOMAINS.length];
-  const pool = BASE.filter((m) => m.domain === domain);
+  const domain = ds.domains[round % ds.domains.length];
+  const pool = ds.memories.filter((m) => m.domain === domain);
   const fresh = Array.from({ length: APPEND }, (_, i) => {
     const src = pool[(round * APPEND + i) % pool.length];
     return { text: `第 ${round} 轮记录：${src.text}`, domain };
   });
   const { vectors: freshVecs } = await harness.embed(
     fresh.map((m) => m.text),
-    { tag: PROFILE },
+    { identity, dataset: ds },
   );
   const freshIds = await harness.seedBalls(
     api,
@@ -162,14 +164,14 @@ function checkInvariants({ stats, pipes, ballIds, prev }) {
   }
 
   // ---- 球 id → 领域（用基础句尾 8 字做键，避免 O(n×375) 全表扫描）----
-  const domainOfTail = new Map(BASE.map((m) => [m.text.slice(-8), m.domain]));
+  const domainOfTail = new Map(ds.memories.map((m) => [m.text.slice(-8), m.domain]));
   const domainOfBall = new Map(
     (await api.listBalls()).map((b) => [b.id, domainOfTail.get(b.text.slice(-8)) ?? null]),
   );
 
   // ---- 跑全部查询 ----
   const rows = [];
-  for (const { q, domain: qd } of QUERIES) {
+  for (const { q, domain: qd } of ds.queries) {
     const t = Date.now();
     const r = await api.recall(q, 1.0);
     const elapsedMs = Date.now() - t;

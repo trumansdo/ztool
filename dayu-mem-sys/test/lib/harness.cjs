@@ -10,6 +10,7 @@ const path = require('path');
 
 const paths = require('./paths.cjs');
 const config = require('./config.cjs');
+const cache = require('./cache.cjs');
 const { hashOf } = require('./stats.cjs');
 
 const NAPI_PATH = path.join(paths.TEST_DIR, 'dayu_test.node');
@@ -71,41 +72,119 @@ async function init({ profile, overrides = {}, run = null, reuseDb = false } = {
   a.init(toml);
   const stats = await a.getStats();
 
-  return { api: a, dim: stats.embeddingDim, toml, dbPath, logDir };
+  // 缓存身份：决定「同一文本是否应该命中同一份向量缓存」
+  const identity = cacheIdentity({ profile, toml, dim: stats.embeddingDim });
+
+  return { api: a, dim: stats.embeddingDim, toml, identity, dbPath, logDir };
+}
+
+/**
+ * 从配置推导缓存身份
+ *
+ * backend / model 都取自 toml 的实际值而不是 profile 名：profile 只是个文件名，
+ * 把 http.toml 里的模型换掉、名字不变，缓存也必须换代。
+ */
+function cacheIdentity({ profile, toml, dim }) {
+  const kv = config.keyValues(toml);
+  const backend = kv.embedding_backend ?? profile;
+  const raw =
+    kv.embedding_api_model ??
+    kv.embedding_model_path ??
+    kv.embedding_model ??
+    profile;
+  return { profile, backend, model: modelLabel(raw), dim };
+}
+
+/**
+ * 模型标识：把文件路径压成「模型名」
+ *
+ * `models/infinilabs/pizza-embed-zh-small-v1/onnx/model.onnx` → `pizza-embed-zh-small-v1`
+ *
+ * 直接用完整路径当缓存名会得到一长串目录，既难读也容易在不同机器上不一致
+ * （绝对路径随环境变），但模型名必须稳定——否则换台机器缓存就命不中了。
+ */
+function modelLabel(raw) {
+  const s = String(raw).replace(/\\/g, '/').replace(/\/+$/, '');
+  const parts = s.split('/');
+  const file = parts[parts.length - 1];
+
+  if (/^model\.(onnx|bin|gguf)$/i.test(file) && parts.length >= 2) {
+    const dir = parts[parts.length - 2];
+    if (dir.toLowerCase() === 'onnx' && parts.length >= 3) return parts[parts.length - 3];
+    return dir;
+  }
+  if (/\.(onnx|bin|gguf)$/i.test(file)) return file.replace(/\.[^\.]+$/, '');
+  return s;
 }
 
 // ---------- 向量缓存 ----------
 
 /**
- * 取一批文本的向量，带磁盘缓存（按嵌入模型 tag 隔离）。
- * 缓存是长期资产：重算远端嵌入要花钱、算本地模型要时间。
+ * 取一批文本的向量，带磁盘缓存
+ *
+ * 缓存身份 = `identity`（后端 + 模型 + 维度）× `dataset`（id + sourceHash）。
+ * 任一项不符直接抛错——不静默重算，也不静默沿用。
+ *
+ * @param texts    待嵌入文本
+ * @param identity `harness.init()` 返回的 identity
+ * @param dataset  `lib/dataset.cjs` 的 load() 结果，或 `adhocDataset()`
+ * @param chunk    每批条数（控制单次 API 请求体大小）
  */
-async function embed(texts, { tag, chunk = 64 } = {}) {
-  if (!tag) throw new Error('embed() 需要 tag（嵌入模型标识，用于隔离缓存）');
+async function embed(texts, { identity, dataset, chunk = 64 } = {}) {
+  if (!identity) throw new Error('embed() 需要 identity（harness.init() 的返回值）');
+  if (!dataset) throw new Error('embed() 需要 dataset（lib/dataset.cjs 的 load() 结果）');
+
   const a = api();
-  const cachePath = paths.cachePath(tag);
-  const cache = paths.readJson(cachePath) || {};
+  const cachePath = paths.cachePath(identity, dataset);
+  const store = cache.open(cachePath, {
+    backend: identity.backend,
+    model: identity.model,
+    dim: identity.dim,
+    dataset: dataset.id,
+    sourceHash: dataset.sourceHash,
+    // 这两项写进头记录并参与比对：以后给 query 加 instruction 前缀或关掉
+    // L2 归一化时，旧缓存会自动失效，而不是被当成同一种向量继续用
+    preprocess: 'none',
+    normalize: 'l2',
+  });
 
   const uniq = [...new Set(texts)];
-  const missing = uniq.filter((t) => !cache[hashOf(t)]);
+  const missing = uniq.filter((t) => !store.vectors.has(hashOf(t)));
 
   for (let i = 0; i < missing.length; i += chunk) {
     const part = missing.slice(i, i + chunk);
     const vectors = await a.embedBatch(part);
-    part.forEach((t, k) => {
-      cache[hashOf(t)] = vectors[k];
+    const entries = part.map((t, k) => {
+      store.vectors.set(hashOf(t), vectors[k]);
+      return [hashOf(t), vectors[k]];
     });
-    // 分批落盘：十万级语料中途失败不至于全部重算
-    paths.writeJson(cachePath, cache);
+    // 追加写：十万级语料中途失败也只丢最后一批，不必全部重算
+    cache.append(cachePath, entries);
   }
 
   return {
-    vectors: texts.map((t) => cache[hashOf(t)]),
+    vectors: texts.map((t) => store.vectors.get(hashOf(t))),
     unique: uniq.length,
     missing: missing.length,
     apiCalls: Math.ceil(missing.length / chunk),
     cachePath: paths.rel(cachePath),
   };
+}
+
+/**
+ * 临时文本集的缓存身份
+ *
+ * 用于不来自数据集的文本（比如 dedupe-threshold 的句对）。sourceHash 直接由
+ * 文本内容算出：改了文本就换缓存，不改就复用。
+ */
+function adhocDataset(id, texts) {
+  const crypto = require('crypto');
+  const h = crypto.createHash('sha1');
+  for (const t of texts) {
+    h.update(t);
+    h.update('\0');
+  }
+  return { id, sourceHash: h.digest('hex') };
 }
 
 // ---------- 建图 ----------
@@ -189,6 +268,8 @@ module.exports = {
   seedEdges,
   seedGraph,
   writeMeta,
+  cacheIdentity,
+  adhocDataset,
   readMeta,
   NAPI_PATH,
 };

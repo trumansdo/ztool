@@ -32,10 +32,15 @@ const PAIRS = [
 (async () => {
   const startedAt = new Date().toISOString();
   const run = paths.newRun('dedupe-threshold', PROFILE);
-  const { api, dim } = await harness.init({ profile: PROFILE, run });
+  const { api, dim, identity } = await harness.init({ profile: PROFILE, run });
 
   const texts = [...new Set(PAIRS.flatMap((p) => [p[1], p[2]]))];
-  const emb = await harness.embed(texts, { tag: PROFILE, chunk: 32 });
+  // 句对不来自数据集：用文本自身算 sourceHash，改了句子就换缓存
+  const emb = await harness.embed(texts, {
+    identity,
+    dataset: harness.adhocDataset('dedupe-pairs', texts),
+    chunk: 32,
+  });
   api.shutdown();
 
   const vecOf = (t) => emb.vectors[texts.indexOf(t)];

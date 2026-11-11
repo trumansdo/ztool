@@ -32,8 +32,34 @@ function stamp(d = new Date()) {
   );
 }
 
-/** 向量缓存路径：按嵌入模型隔离（文本相同但模型不同，向量空间不同） */
-const cachePath = (tag) => path.join(CACHE_DIR, `${tag}.json`);
+/** 文件名片段：小写、非字母数字折叠成单短横线 */
+const slug = (s) =>
+  String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'x';
+
+/**
+ * 向量缓存路径
+ *
+ * 键 = 后端 + 模型 + 维度 + 数据集 + 数据集来源哈希。
+ *
+ * 为什么要这几项：
+ *   - backend/model：换模型 → 完全不同的向量空间
+ *   - dim：最便宜的兜底，防「同维度不同模型」漏检时的部分命中
+ *   - dataset/sourceHash：数据集重新生成 → 自动换代，旧缓存可删；
+ *     同一数据集的不同规模（100 / 5000）共用一份缓存，因为前缀相同
+ *
+ * 不包含记忆系统配置（水量、阻力、分配…）——那些正是要靠缓存复用才跑得快的。
+ */
+function cachePath(identity, dataset) {
+  const { backend, model, dim } = identity;
+  const { id, sourceHash } = dataset;
+  const name =
+    `${slug(backend)}-${slug(model)}-${dim}-${slug(id)}-${String(sourceHash).slice(0, 8)}` +
+    '.jsonl';
+  return path.join(CACHE_DIR, name);
+}
 
 /** 长期全链路库 */
 const MAIN_DB = path.join(DATA_DIR, 'main.tdb');

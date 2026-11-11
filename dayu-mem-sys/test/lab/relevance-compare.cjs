@@ -17,7 +17,8 @@ const path = require('path');
 
 const paths = require('../lib/paths.cjs');
 const harness = require('../lib/harness.cjs');
-const { expandCorpus } = require('../lib/corpus.cjs');
+const datasetLib = require('../lib/dataset.cjs');
+const cacheLib = require('../lib/cache.cjs');
 const { cos, mean, orderDesc, hashOf, signTest, pctStr } = require('../lib/stats.cjs');
 
 const arg = (name, def) => {
@@ -54,12 +55,15 @@ function loadTag({ tag, dir }) {
   const meta = harness.readMeta(dir);
   const result = paths.readJson(path.join(dir, 'result.json'));
   if (!result) throw new Error(`${dir} 缺少 result.json`);
-  const cache = paths.readJson(path.resolve(paths.REPO_ROOT, meta.cache));
-  if (!cache) throw new Error(`${tag}：缺少向量缓存 ${meta.cache}`);
+  const cache = cacheLib.load(path.resolve(paths.REPO_ROOT, meta.cache));
+  if (!cache.size) throw new Error(`${tag}：缺少向量缓存 ${meta.cache}`);
 
-  const mems = expandCorpus(result.summary.balls);
+  const mems = datasetLib.memories(
+    datasetLib.load(result.summary.dataset ?? 'main'),
+    result.summary.balls,
+  );
   const vecOf = (t) => {
-    const v = cache[hashOf(t)];
+    const v = cache.get(hashOf(t));
     if (!v) throw new Error(`${tag}：缓存缺向量「${t.slice(0, 20)}」`);
     return v;
   };

@@ -21,6 +21,12 @@ logs/
 # 本地真实配置含密钥，禁止入库（模板见 test/config/http.example.toml）
 test/config/http.toml
 
+# ---- 数据集：派生产物，由 test/gen-dataset.cjs 从人工语料生成 ----
+# 源（入库）：test/corpus.cjs + test/lib/corpus.cjs + test/gen-dataset.cjs
+# 产物（不入库）：test/datasets/*.json —— 改了源就重跑生成器，sourceHash 会变，
+# 向量缓存随之自动换代。所以没必要把 11MB 的派生 JSON 塞进版本库。
+test/datasets/*.json
+
 # ---- 一次性运行产物：整目录可删 ----
 test/out/
 

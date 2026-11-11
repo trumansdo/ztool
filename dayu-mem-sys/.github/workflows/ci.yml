@@ -32,6 +32,23 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
+  no-disk-cache-in-core:
+    name: No Disk Cache In Core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 向量缓存只允许存在于 test/lib/（测试工具）。核心 crate 每次都必须
+      # 真的调嵌入模型——真实使用不能读缓存，否则换了模型还会拿旧向量。
+      - name: crates/ must not touch vector cache files
+        run: |
+          hits=$(grep -rnE 'CACHE_DIR|cache_path|cachePath|test/data/cache' crates/ --include='*.rs' || true)
+          if [ -n "$hits" ]; then
+            echo "ERROR: 核心 crate 出现磁盘缓存痕迹（缓存只能在 test/lib/ 下）："
+            echo "$hits"
+            exit 1
+          fi
+          echo "核心 crate 无磁盘缓存痕迹 OK"
+
   test:
     name: Test
     runs-on: ubuntu-latest

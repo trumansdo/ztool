@@ -15,7 +15,7 @@
 
 const paths = require('../lib/paths.cjs');
 const harness = require('../lib/harness.cjs');
-const { QUERIES, expandCorpus, buildEdges } = require('../lib/corpus.cjs');
+const datasetLib = require('../lib/dataset.cjs');
 const { cos, mean, percentile, orderDesc } = require('../lib/stats.cjs');
 
 const arg = (name, def) => {
@@ -24,6 +24,7 @@ const arg = (name, def) => {
 };
 
 const PROFILE = arg('profile', 'http');
+const DATASET = arg('dataset', 'main');
 const BALLS = +arg('balls', 5000);
 const BUDGET = +arg('budget', 10);
 const TOP = +arg('top', 5);
@@ -32,11 +33,12 @@ const INJECT = +arg('inject', 5000);
 const EMBED_CHUNK = +arg('chunk', 64);
 
 (async () => {
+  const ds = datasetLib.load(DATASET);
   const startedAt = new Date().toISOString();
   const run = paths.newRun('relevance', `${PROFILE}-${BALLS}b-i${INJECT}`);
 
   // 放宽注入预算：让尽可能多的点亮球都渲染出来，测的是「召回」而不是「预算截断」
-  const { api, dim } = await harness.init({
+  const { api, dim, identity } = await harness.init({
     profile: PROFILE,
     run,
     overrides: {
@@ -49,22 +51,22 @@ const EMBED_CHUNK = +arg('chunk', 64);
     },
   });
 
-  const mems = expandCorpus(BALLS);
+  const mems = datasetLib.memories(ds, BALLS);
   const emb = await harness.embed(
     mems.map((m) => m.text),
-    { tag: PROFILE, chunk: EMBED_CHUNK },
+    { identity, dataset: ds, chunk: EMBED_CHUNK },
   );
-  const { ids } = await harness.seedGraph(api, mems, emb.vectors, buildEdges(mems));
+  const { ids } = await harness.seedGraph(api, mems, emb.vectors, datasetLib.edges(ds, BALLS));
 
   const idToIdx = new Map(ids.map((id, i) => [id, i]));
   const queryVecs = await harness.embed(
-    QUERIES.map((q) => q.q),
-    { tag: PROFILE, chunk: EMBED_CHUNK },
+    ds.queries.map((q) => q.q),
+    { identity, dataset: ds, chunk: EMBED_CHUNK },
   );
 
   const perQuery = [];
-  for (let qi = 0; qi < QUERIES.length; qi++) {
-    const { q, domain } = QUERIES[qi];
+  for (let qi = 0; qi < ds.queries.length; qi++) {
+    const { q, domain } = ds.queries[qi];
     const qv = queryVecs.vectors[qi];
 
     // 全库余弦 → 真值排序
@@ -126,6 +128,8 @@ const EMBED_CHUNK = +arg('chunk', 64);
   ];
 
   const summary = {
+    dataset: ds.id,
+    datasetSourceHash: ds.sourceHash.slice(0, 8),
     balls: BALLS,
     dim,
     profile: PROFILE,

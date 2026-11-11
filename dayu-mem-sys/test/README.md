@@ -5,7 +5,12 @@
 ```
 test/
 ├── README.md              本文件
-├── corpus.cjs             语料本体（15 领域 × 25 条 + 30 条查询），纯数据
+├── corpus.cjs             人工语料本体（15 领域 × 25 条 + 30 条查询），纯数据，入库
+├── gen-dataset.cjs        数据集生成器（人工语料 → datasets/*.json）
+├── migrate-cache.cjs      一次性迁移旧 JSON 缓存 → JSONL
+│
+├── datasets/              【派生产物】不入库，由 gen-dataset.cjs 生成
+│   └── main.json          落地数据集（记忆 + 查询），改语料后需重跑生成器
 │
 ├── config/                配置：base 写全量，各后端只写差异
 │   ├── base.toml          唯一完整配置
@@ -17,9 +22,11 @@ test/
 ├── lib/                   公共逻辑
 │   ├── paths.cjs          路径约定（data / out / cache / 运行目录）
 │   ├── config.cjs         TOML 分层合并
-│   ├── corpus.cjs         语料展开 + 建图规则
+│   ├── corpus.cjs         语料展开 + 建图规则（只被 gen-dataset 用）
+│   ├── dataset.cjs        数据集加载 + sourceHash 校验 + 取前缀
+│   ├── cache.cjs          向量缓存（JSONL，append-only，身份校验）
 │   ├── stats.cjs          cos / 分位数 / 符号检验
-│   └── harness.cjs        napi 加载、初始化、向量缓存、批量建图、meta 落盘
+│   └── harness.cjs        napi 加载、初始化、向量缓存入口、批量建图、meta 落盘
 │
 ├── bin/                   冒烟测试（有断言，可进 CI）
 │   ├── smoke.cjs          长期库全链路冒烟（data/main.tdb）
@@ -36,7 +43,7 @@ test/
 ├── data/                  【长期资产】跨运行存活，不自动清理
 │   ├── main.tdb           长期全链路库
 │   ├── main.history.jsonl 每轮冒烟的统计快照（一行一轮）
-│   ├── cache/<profile>.json  向量缓存（按模型隔离）
+│   ├── cache/<key>.jsonl  向量缓存（键 = 后端-模型-维度-数据集-来源哈希）
 │   ├── snapshots/         长期库备份
 │   └── logs/              长期库的日志与指标
 │
@@ -86,7 +93,7 @@ test/
 `bin/` 有断言（失败退出码非 0），`lab/` 没有（只有数字）。见下面第 4 条规则。
 `memory-eval/` 又是一类：跑一次几十分钟，结果要留作横向对比的基准。
 
-## 五条规则
+## 八条规则
 
 **1. `data/` / `memory-eval/` / `out/` 三者是硬边界**
 
@@ -136,7 +143,53 @@ test/
 
 **5. 配置分层 + 逻辑抽公共**
 
-改语料只改 `corpus.cjs`，改展开/建图只改 `lib/corpus.cjs`，改缓存格式只改 `lib/harness.cjs`。`bin/` 里的脚本只写自己关心的事。
+改语料只改 `corpus.cjs`，改展开/建图只改 `lib/corpus.cjs`，改数据集格式只改 `gen-dataset.cjs`，改缓存格式只改 `lib/cache.cjs`。`bin/`、`lab/` 里的脚本只写自己关心的事——它们不再 `require('corpus.cjs')`，只通过 `lib/dataset.cjs` 取数据。
+
+**6. 数据从落地文件读，不现算**
+
+`test/datasets/main.json` 是 `gen-dataset.cjs` 从人工语料生成的落地数据集（10 万条记忆 + 30 条查询，10.9 MB）。脚本读它、取前缀，而不是每次自己 `expandCorpus`：
+
+```bash
+node test/gen-dataset.cjs main 100000    # 生成（改语料后必须重跑）
+```
+
+数据集头部记着 `sourceHash`——`corpus.cjs` + `lib/corpus.cjs` + `gen-dataset.cjs` 三个文件的 sha1。加载时比对，不一致直接报错：
+
+```
+数据集已过期：
+  文件  sourceHash=374a412c（id=main，记忆 100000 条）
+  当前  sourceHash=8a1b3f02（corpus.cjs / lib/corpus.cjs / gen-dataset.cjs 有改动）
+```
+
+不做「文件不存在就自动生成」：静默生成会让「改完语料忘了重跑」变成「测试用着旧数据但你以为是新的」。
+
+生成器不含任何随机数，同参数重跑逐字节相同（`sha256sum` 可验证）。**要做另一个数据集，就改人工语料或另写一份 `corpus.cjs`，然后重跑生成器**——不要试图给生成器加随机种子，那会让「同一个数据集」失去意义。
+
+**7. 向量缓存的身份必须自证**
+
+缓存文件名 = `后端-模型-维度-数据集-来源哈希.jsonl`，且文件第 1 行写同样的身份：
+
+```
+http-qwen-qwen3-embedding-4b-2560-main-374a412c.jsonl
+onnx-pizza-embed-zh-small-v1-512-main-374a412c.jsonl
+```
+
+加载时逐字段比对，不一致就抛错而不是静默重算（重算要花钱或算力，静默换掉测量条件更糟）。`preprocess` / `normalize` 也记在头里：以后给 query 加 instruction 前缀或关掉 L2 归一化，旧缓存会自动失效。
+
+为什么不是一个大 JSON：旧实现每批（`chunk=64`）都把整个对象 `JSON.stringify` 重写一遍，7554 条要写 ~28 GB，10 万条要写 ~3.9 TB。现在是 append-only，只写新增的那批；中途失败也只丢最后一批。
+
+旧格式迁移：
+
+```bash
+node test/migrate-cache.cjs           # 预览
+node test/migrate-cache.cjs --write   # 执行（旧文件改名为 *.migrated-<时间戳>）
+```
+
+**8. 磁盘缓存只在测试工具里，核心路径不许有**
+
+`crates/**` 每次都必须真的调嵌入模型。`dayu-serve` 里有一个 `EMBED_CACHE_MAX` 的进程内 Map，那是内存记忆化（进程退出即消失、不读写文件），不是磁盘缓存。
+
+CI 有一条 `No Disk Cache In Core` 守着：`crates/**/*.rs` 出现 `CACHE_DIR` / `cache_path` / `cachePath` / `test/data/cache` 就红。
 
 ## 构建
 
@@ -178,6 +231,13 @@ cygwin 的 `ln -s` 生成的是带 `/cygdrive/...` 目标的链接，Rust（原�
 ## 常用命令
 
 ```bash
+# 数据集（改语料后必须重跑；产物不入库）
+node test/gen-dataset.cjs main 100000
+
+# 向量缓存迁移（旧 JSON → JSONL，一次性）
+node test/migrate-cache.cjs
+node test/migrate-cache.cjs --write
+
 # 部署连通性（8 条断言，失败退出码非 0）
 node test/bin/probe.cjs --profile http
 node test/bin/probe.cjs --profile onnx
@@ -209,17 +269,20 @@ rm -rf test/memory-eval/2026*      # 某次或全部评测运行
 
 `test/data/` 不要随手删——向量缓存重算要花 API 钱或本地算力，`main.tdb` 与 `main.history.jsonl` 是长期回归的基线。
 
+`test/datasets/` 可以随手删（派生物），删了重跑 `node test/gen-dataset.cjs` 即可，向量缓存仍然命中（`sourceHash` 没变）。
+
 ## 什么入库、什么不入库
 
 | 类型 | 入库 | 例 |
 |:--|:--|:--|
 | 脚本 | ✅ | `bin/*.cjs`、`lab/*.cjs`、`lib/*.cjs`、`memory-eval/run-eval.cjs` |
 | 配置（无密钥） | ✅ | `config/base.toml`、`lms.toml`、`onnx.toml`、`http.example.toml` |
-| 语料 | ✅ | `corpus.cjs` |
+| 语料 | ✅ | `corpus.cjs`、`gen-dataset.cjs` |
+| 数据集 | ❌ | `datasets/*.json`（派生物，由生成器重建） |
 | 文档 | ✅ | `README.md`、`PROGRESS.md`、`memory-eval/README.md` |
 | 评测报告 | ✅ | `memory-eval/*/meta.json`、`memory-eval/*/*.json`、`data/main.history.jsonl` |
 | 含密钥的真实配置 | ❌ | `config/http.toml` |
-| 数据库二进制 | ❌ | `*.tdb`、`*.tdb.*`、`data/cache/*.json` |
+| 数据库二进制与向量缓存 | ❌ | `*.tdb`、`*.tdb.*`、`data/cache/*.jsonl`、`*.migrated-*` |
 | 日志与指标 | ❌ | `logs/`、`*.log` |
 | 构建产物 | ❌ | `*.node`、`*.dll`、`*.pdb` |
 | 一次性运行目录 | ❌ | `out/`、`memory-eval/*/store/` |

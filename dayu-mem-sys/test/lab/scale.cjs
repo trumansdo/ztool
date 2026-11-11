@@ -20,7 +20,7 @@ const fs = require('fs');
 
 const paths = require('../lib/paths.cjs');
 const harness = require('../lib/harness.cjs');
-const { QUERIES, expandCorpus, buildEdges } = require('../lib/corpus.cjs');
+const datasetLib = require('../lib/dataset.cjs');
 const { mean } = require('../lib/stats.cjs');
 
 const arg = (name, def) => {
@@ -35,6 +35,9 @@ const listArg = (name) =>
     : null;
 
 const PROFILE = arg('profile', 'http');
+const DATASET = arg('dataset', 'main');
+// 数据集在模块级加载：runOne() 每组建一次库，但数据集只有一份
+const ds = datasetLib.load(DATASET);
 const LADDER = process.argv.includes('--ladder');
 const SKIP = +arg('skip', 0);
 const BUDGETS = listArg('budgets');
@@ -48,7 +51,7 @@ async function runOne(cfg) {
   const run = paths.newRun('scale', `${PROFILE}-${cfg.balls}b-b${cfg.budget}-t${cfg.startTopN}`);
 
   const tInit = Date.now();
-  const { api, dim } = await harness.init({
+  const { api, dim, identity } = await harness.init({
     profile: PROFILE,
     run,
     overrides: {
@@ -58,24 +61,24 @@ async function runOne(cfg) {
   });
   const initMs = Date.now() - tInit;
 
-  // 1. 语料 + 嵌入（带缓存）
-  const mems = expandCorpus(cfg.balls);
+  // 1. 数据集 + 嵌入（带缓存）
+  const mems = datasetLib.memories(ds, cfg.balls);
   const tEmbed = Date.now();
   const emb = await harness.embed(
     mems.map((m) => m.text),
-    { tag: PROFILE, chunk: EMBED_CHUNK },
+    { identity, dataset: ds, chunk: EMBED_CHUNK },
   );
   const embedMs = Date.now() - tEmbed;
 
   // 2. 建图
   const tCreate = Date.now();
-  const { ids, pipes } = await harness.seedGraph(api, mems, emb.vectors, buildEdges(mems));
+  const { ids, pipes } = await harness.seedGraph(api, mems, emb.vectors, datasetLib.edges(ds, cfg.balls));
   const createMs = Date.now() - tCreate;
 
   // 3. 查询
   const domainOf = new Map(mems.map((m, i) => [ids[i], m.domain]));
   const rows = [];
-  for (const { q, domain } of QUERIES) {
+  for (const { q, domain } of ds.queries) {
     const t = Date.now();
     let r;
     try {
@@ -117,6 +120,8 @@ async function runOne(cfg) {
   const cntTotal = ok.reduce((s, x) => s + x.countedBlocks, 0);
 
   const result = {
+    dataset: ds.id,
+    datasetSourceHash: ds.sourceHash.slice(0, 8),
     balls: cfg.balls,
     pipes,
     dim,
