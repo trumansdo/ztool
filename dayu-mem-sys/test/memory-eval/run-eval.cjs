@@ -95,19 +95,26 @@ const serveLog = path.join(runDir, 'serve.log');
 const configPath = path.join(runDir, 'config.toml');
 const metaPath = path.join(runDir, 'meta.json');
 
-fs.mkdirSync(storeDir, { recursive: true });
+// 只有需要 dayu-serve 的 adapter 才产生配置快照与库目录；
+// 基线（bm25/dense）纯进程内，不应留下无意义的空 store/
+const NEEDS_SERVER = ADAPTER === 'dayu';
 
-// 配置快照：服务只读这一个文件，保证结果可复现
-fs.writeFileSync(
-  configPath,
-  configLib.load(CONFIG_NAME, {
-    metrics_enabled: false,
-    log_dir: paths.rel(path.join(runDir, 'logs')),
-    start_top_n: TOP_K,
-    max_balls_per_inject: TOP_K,
-  }),
-  'utf8',
-);
+if (NEEDS_SERVER) {
+  fs.mkdirSync(storeDir, { recursive: true });
+  // 配置快照：服务只读这一个文件，保证结果可复现
+  fs.writeFileSync(
+    configPath,
+    configLib.load(CONFIG_NAME, {
+      metrics_enabled: false,
+      log_dir: paths.rel(path.join(runDir, 'logs')),
+      start_top_n: TOP_K,
+      max_balls_per_inject: TOP_K,
+    }),
+    'utf8',
+  );
+} else {
+  fs.mkdirSync(runDir, { recursive: true });
+}
 
 // ---------- dayu-serve 生命周期 ----------
 
@@ -227,16 +234,15 @@ function runMceval(env) {
 
 (async () => {
   const startedAt = Date.now();
-  const needsServer = ADAPTER === 'dayu';
   let server = null;
   let error = null;
 
   try {
-    if (needsServer) {
+    if (NEEDS_SERVER) {
       server = await startServer();
       console.log(`[eval] dayu-serve ${server.url}  link_weight=${LINK_WEIGHT}`);
     }
-    await runMceval(needsServer ? { DAYU_SERVE_URL: server.url } : {});
+    await runMceval(NEEDS_SERVER ? { DAYU_SERVE_URL: server.url } : {});
   } catch (e) {
     error = String(e.message || e);
     console.error(`[eval] 失败：${error}`);

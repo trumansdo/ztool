@@ -132,9 +132,30 @@ node test/bin/relevance-compare.cjs        # 自动取各 profile 最近一次
 ```bash
 rm -rf test/out                    # 所有一次性产物
 rm -rf test/out/legacy-20261110    # 重构前的历史归档
+rm -rf test/memory-eval/2026*      # 某次或全部评测运行
 ```
 
 `test/data/` 不要随手删——向量缓存重算要花 API 钱或本地算力，`main.tdb` 与 `main.history.jsonl` 是长期回归的基线。
+
+## 什么入库、什么不入库
+
+| 类型 | 入库 | 例 |
+|:--|:--|:--|
+| 脚本 | ✅ | `bin/*.cjs`、`lib/*.cjs`、`memory-eval/run-eval.cjs` |
+| 配置（无密钥） | ✅ | `config/base.toml`、`lms.toml`、`onnx.toml`、`http.example.toml` |
+| 语料 | ✅ | `corpus.cjs` |
+| 文档 | ✅ | `README.md`、`PROGRESS.md`、`memory-eval/README.md` |
+| 评测报告 | ✅ | `memory-eval/*/meta.json`、`memory-eval/*/*.json`、`data/main.history.jsonl` |
+| 含密钥的真实配置 | ❌ | `config/http.toml` |
+| 数据库二进制 | ❌ | `*.tdb`、`*.tdb.*`、`data/cache/*.json` |
+| 日志与指标 | ❌ | `logs/`、`*.log` |
+| 构建产物 | ❌ | `*.node`、`*.dll`、`*.pdb` |
+| 一次性运行目录 | ❌ | `out/`、`memory-eval/*/store/` |
+
+规则在仓库根的 `.gitignore`。两个容易踩的坑：
+
+- `test/data/` 不能整个忽略，否则 `!test/data/main.history.jsonl` 这类例外规则失效（git 不会进入被忽略的目录）——所以写成 `test/data/*` + 白名单。
+- `logs/` 是目录模式，挡不住 `serve.log` 这种同级单文件，得单独列。
 
 ## 已知限制
 

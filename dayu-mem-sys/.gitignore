@@ -2,24 +2,41 @@
 **/*.rs.bk
 Cargo.lock.bak
 
-# 本地数据与日志
+# ============================================================
+# 测试目录（test/）的入库策略
+# ------------------------------------------------------------
+# 入库：脚本、配置（不含密钥）、语料、README、评测报告
+# 不入库：数据库二进制、日志、向量缓存、构建产物
+# 目录约定见 test/README.md
+# ============================================================
+
+# 数据库文件（体积大，可由脚本重建）
 *.tdb
 *.tdb.*
+
+# 日志与指标（每次都新写，无对比价值）
 logs/
+*.log
 
-# 测试产物：一次性运行目录、长期库与向量缓存都不入库
-# 目录约定见 test/README.md——脚本、配置、语料、公共逻辑全部入库
-test/out/
-test/data/
-
-# 基准评测产物：每次运行一个自描述目录（配置快照/服务日志/库/结果）
-# 只有运行器与说明入库，见 test/memory-eval/README.md
-test/memory-eval/*
-!test/memory-eval/README.md
-!test/memory-eval/run-eval.cjs
-
-# 本地真实配置含密钥，禁止入库（模板见 config/http.example.toml）
+# 本地真实配置含密钥，禁止入库（模板见 test/config/http.example.toml）
 test/config/http.toml
+
+# ---- 一次性运行产物：整目录可删 ----
+test/out/
+
+# ---- 长期库：只保留人读的历史记录，库与向量缓存不入库 ----
+# 用 `test/data/*` 而不是 `test/data/`，否则 git 不会进目录，
+# 后面的 `!` 例外规则失效
+test/data/*
+!test/data/README.md
+!test/data/main.history.jsonl
+
+# ---- 基准评测：保留报告与配置快照，排除库、日志、向量缓存 ----
+# 一次运行 = 一个自描述目录，见 test/memory-eval/README.md
+test/memory-eval/*/store/
+test/memory-eval/*/logs/
+test/memory-eval/*/cache/
+test/memory-eval/*/serve.log
 
 # napi 构建产物
 *.node
