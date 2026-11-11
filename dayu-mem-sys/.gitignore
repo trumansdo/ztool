@@ -12,6 +12,12 @@ logs/
 test/out/
 test/data/
 
+# 基准评测产物：每次运行一个自描述目录（配置快照/服务日志/库/结果）
+# 只有运行器与说明入库，见 test/memory-eval/README.md
+test/memory-eval/*
+!test/memory-eval/README.md
+!test/memory-eval/run-eval.cjs
+
 # 本地真实配置含密钥，禁止入库（模板见 config/http.example.toml）
 test/config/http.toml
 

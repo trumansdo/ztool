@@ -38,6 +38,16 @@ test/
 │   ├── snapshots/         长期库备份
 │   └── logs/              长期库的日志与指标
 │
+├── memory-eval/           【评测资产】公开基准（LoCoMo / LongMemEval）
+│   ├── README.md          目录约定 + 运行器用法
+│   ├── run-eval.cjs       一次性运行器（起服务 + 跑 mceval + 归档产物）
+│   └── <时间戳>-<adapter>-<dataset>[-<tag>]/
+│       ├── config.toml    本次运行的完整配置
+│       ├── serve.log      dayu-serve 日志
+│       ├── store/         各 namespace 的库
+│       ├── <adapter>_*.json  mceval 逐题结果
+│       └── meta.json      参数 / git / 耗时 / 产物清单
+│
 └── out/                   【一次性产物】整目录可删
     ├── <时间戳>-<脚本>-<profile>-<参数>/
     │   ├── meta.json      配置快照 + git commit + 参数 + 耗时
@@ -49,13 +59,17 @@ test/
 
 ## 四条规则
 
-**1. `data/` 与 `out/` 是硬边界**
+**1. `data/` / `memory-eval/` / `out/` 三者是硬边界**
 
-| | `data/` | `out/` |
-|:--|:--|:--|
-| 跨运行 | 有价值 | 无价值 |
-| 删除后果 | 丢长期数据 | 零损失 |
-| 清理 | 手动 + `snapshots/` 保护 | `rm -rf test/out` |
+| | `data/` | `memory-eval/` | `out/` |
+|:--|:--|:--|:--|
+| 跨运行 | 有价值 | 有价值（一次跑几十分钟） | 无价值 |
+| 删除后果 | 丢长期数据 | 丢评测对比基准 | 零损失 |
+| 清理 | 手动 + `snapshots/` 保护 | 手动按目录删 | `rm -rf test/out` |
+| 产生者 | `bin/smoke.cjs` | `memory-eval/run-eval.cjs` | `bin/*.cjs`、`cargo test` |
+
+评测产物单独开目录，是为了让 `rm -rf test/out`（日常测试清理）不会顺手删掉
+几十分钟才跑出来的一次基准结果；反过来，评测的几百 MB 库也不会拖慢日常测试。
 
 **2. 一次运行 = 一个自描述目录**
 
