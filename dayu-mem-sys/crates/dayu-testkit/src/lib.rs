@@ -11,17 +11,18 @@ use dayu_domain::traits::*;
 // 测试目录
 // ============================================================
 
-/// 测试产物根目录：`<workspace>/test`
+/// 测试产物根目录：`<workspace>/test/out`
 ///
-/// 所有测试产生的 db / 日志 / 指标文件都落在这里，不污染仓库根，
-/// 也不散落到系统临时目录——排查时一处就能看全。
+/// 落在 `out/` 而不是 `test/` 根：`test/out/` 是「一次性产物，整目录可删」的
+/// 唯一位置（见 `test/README.md`），已在 .gitignore 里。测试跑出来的 db / 日志
+/// 散落在 `test/` 根会破坏这个约定。
 pub fn test_root() -> std::path::PathBuf {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test");
-    std::fs::create_dir_all(&root).expect("创建 test/ 目录失败");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test/out");
+    std::fs::create_dir_all(&root).expect("创建 test/out 目录失败");
     root
 }
 
-/// 本次测试进程的产物根目录：`test/run-<时间戳>-<pid>/`
+/// 本次测试进程的产物根目录：`test/out/run-<时间戳>-<pid>/`
 ///
 /// 每个测试二进制进程一个目录，进程内所有 `temp_dir` 都落在它下面。
 /// **跑完不删**——要能事后翻 db、日志、指标对比行为。
@@ -45,7 +46,7 @@ fn run_dir() -> &'static std::path::Path {
 /// 在本次运行目录下创建**保留**的测试目录，返回其路径
 ///
 /// 不返回 `TempDir`：产物要在测试结束后仍可查看。
-/// 需要清理时手动删 `test/run-*`，或跑 `cargo test` 前自行清空。
+/// 需要清理时手动删 `test/out/run-*`，或跑 `cargo test` 前自行清空。
 pub fn temp_dir(prefix: &str) -> std::path::PathBuf {
     use std::sync::atomic::{AtomicUsize, Ordering};
     static SEQ: AtomicUsize = AtomicUsize::new(0);

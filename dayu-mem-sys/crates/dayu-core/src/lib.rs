@@ -68,6 +68,51 @@ pub struct RecallOutput {
     pub stats: RecallStats,
 }
 
+/// 批量建球的单条输入
+///
+/// `chain_key` 用于把同一会话的相邻回合连成管道：相同 key 的相邻两条
+/// 在 `create_turn_balls_batch` 里会自动建一条边。
+pub struct NewBall<'a> {
+    pub content: &'a str,
+    pub embedding: &'a [f32],
+    pub size: f64,
+    pub source: TurnId,
+    pub chain_key: Option<String>,
+}
+
+/// 球构造的唯一入口：所有创建路径（单个/批量/带来源）共用，避免字段漂移
+fn build_ball(
+    id: BallId,
+    content: &str,
+    embedding: &[f32],
+    size: f64,
+    source: TurnId,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Ball {
+    Ball {
+        id,
+        embedding: embedding.to_vec(),
+        ball_stored_size: size.clamp(0.0, 10.0),
+        ball_size_ceiling: 10.0,
+        content_list: vec![Content {
+            id: ContentId(0),
+            text: content.to_string(),
+            encoding: ContentEncoding::Raw,
+            source,
+            injected_count: 0,
+            status: ContentStatus::Active,
+        }],
+        content_list_max: 100,
+        last_watered: now,
+        ball_stability: 7.0,
+        lit_count: 0,
+        status: BallStatus::Active,
+        domain: None,
+        created_at: now,
+        schema_version: 1,
+    }
+}
+
 /// 大禹记忆系统门面
 pub struct DayuCore {
     config: Arc<Config>,
@@ -606,34 +651,95 @@ impl DayuCore {
         embedding: &[f32],
         size: f64,
     ) -> Result<BallId, Box<dyn std::error::Error + Send + Sync>> {
+        self.create_ball_with_source(storage, content, embedding, size, TurnId(String::new()))
+            .await
+    }
+
+    /// 创建新球并记录来源回合
+    ///
+    /// `source` 写入 `Content.source`，随 Ball 一起序列化进存储，重启后仍可读回。
+    /// 用途：外部系统（评测服务、插件）需要把球映射回原始回合，
+    /// 而 `create_ball` 无法携带这一信息。
+    pub async fn create_ball_with_source(
+        &self,
+        storage: &dyn StorageBackend,
+        content: &str,
+        embedding: &[f32],
+        size: f64,
+        source: TurnId,
+    ) -> Result<BallId, Box<dyn std::error::Error + Send + Sync>> {
         let id = storage.allocate_ball_id().await?;
-        let now = chrono::Utc::now();
-        let ball = Ball {
-            id,
-            embedding: embedding.to_vec(),
-            ball_stored_size: size.clamp(0.0, 10.0),
-            ball_size_ceiling: 10.0,
-            content_list: vec![Content {
-                id: ContentId(0),
-                text: content.to_string(),
-                encoding: ContentEncoding::Raw,
-                source: TurnId(String::new()),
-                injected_count: 0,
-                status: ContentStatus::Active,
-            }],
-            content_list_max: 100,
-            last_watered: now,
-            ball_stability: 7.0,
-            lit_count: 0,
-            status: BallStatus::Active,
-            domain: None,
-            created_at: now,
-            schema_version: 1,
-        };
+        let ball = build_ball(id, content, embedding, size, source, chrono::Utc::now());
         let mut tx = storage.begin_transaction().await?;
         tx.upsert_ball(&ball).await?;
         tx.commit().await?;
         Ok(id)
+    }
+
+    /// 批量建球 + 同会话相邻回合自动连管道（评测灌库）
+    ///
+    /// 与逐个调 `create_ball_with_source` + `link_balls` 语义等价，但整批只开一个事务。
+    /// 实测逐球提交 ~37ms/球（fsync 主导），批量后降到毫秒级——评测每题要灌
+    /// 几百到几千回合，不批量的话单次评测跑不完。
+    ///
+    /// `link_weight` 为 `Some(w)` 时，`chain_key` 相同的相邻两球之间建一条粗细 `w`
+    /// 的管道（`PipeSource::NewBall`），且与球同事务写入。
+    pub async fn create_turn_balls_batch(
+        &self,
+        storage: &dyn StorageBackend,
+        items: &[NewBall<'_>],
+        link_weight: Option<f64>,
+    ) -> Result<Vec<BallId>, Box<dyn std::error::Error + Send + Sync>> {
+        if items.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // ID 在事务外分配：allocate 失败时尚未写任何数据，重试安全
+        let mut ids = Vec::with_capacity(items.len());
+        for _ in items {
+            ids.push(storage.allocate_ball_id().await?);
+        }
+
+        let now = chrono::Utc::now();
+        let mut tx = storage.begin_transaction().await?;
+        let mut last_in_chain: std::collections::HashMap<&str, BallId> =
+            std::collections::HashMap::new();
+
+        for (item, id) in items.iter().zip(ids.iter().copied()) {
+            let ball = build_ball(
+                id,
+                item.content,
+                item.embedding,
+                item.size,
+                item.source.clone(),
+                now,
+            );
+            tx.upsert_ball(&ball).await?;
+
+            let Some(weight) = link_weight else { continue };
+            let Some(key) = item.chain_key.as_deref() else {
+                continue;
+            };
+            if let Some(prev) = last_in_chain.insert(key, id) {
+                let (lo, hi) = if prev < id { (prev, id) } else { (id, prev) };
+                let pipe = Pipe {
+                    id: storage.allocate_pipe_id().await?,
+                    a: lo,
+                    b: hi,
+                    pipe_base_thickness: weight.clamp(0.0, self.config.pipe_thickness_ceiling),
+                    pipe_stability: 3.0,
+                    last_blocked_at: None,
+                    blocked_pass_count_stored: 0,
+                    last_flowed: now,
+                    source: PipeSource::NewBall,
+                    status: PipeStatus::Active,
+                };
+                tx.upsert_pipe(&pipe).await?;
+            }
+        }
+
+        tx.commit().await?;
+        Ok(ids)
     }
 
     /// 批量建球：一个事务写入整批，适合规模冒烟与批量导入
@@ -653,28 +759,14 @@ impl DayuCore {
         let mut ids = Vec::with_capacity(items.len());
         for (content, embedding, size) in items {
             let id = storage.allocate_ball_id().await?;
-            let ball = Ball {
+            let ball = build_ball(
                 id,
-                embedding: embedding.clone(),
-                ball_stored_size: size.clamp(0.0, 10.0),
-                ball_size_ceiling: 10.0,
-                content_list: vec![Content {
-                    id: ContentId(0),
-                    text: content.clone(),
-                    encoding: ContentEncoding::Raw,
-                    source: TurnId(String::new()),
-                    injected_count: 0,
-                    status: ContentStatus::Active,
-                }],
-                content_list_max: 100,
-                last_watered: now,
-                ball_stability: 7.0,
-                lit_count: 0,
-                status: BallStatus::Active,
-                domain: None,
-                created_at: now,
-                schema_version: 1,
-            };
+                content,
+                embedding,
+                *size,
+                TurnId(String::new()),
+                now,
+            );
             tx.upsert_ball(&ball).await?;
             ids.push(id);
         }
@@ -1193,6 +1285,30 @@ mod tests {
 
         let capped = store.get_ball(b).await.unwrap().unwrap();
         assert_eq!(capped.ball_stored_size, 10.0);
+    }
+
+    #[tokio::test]
+    async fn create_ball_with_source_persists_turn_id() {
+        let core = archive_test_core();
+        let store = temp_store();
+
+        // 外部系统把「会话 + 回合」编码进 TurnId，需能原样读回（TriviumDB 重启后也在）
+        let source = TurnId(r#"{"session_id":"s1","turn_idx":7}"#.to_string());
+        let id = core
+            .create_ball_with_source(&store, "用户说要去成都", &vec![0.3; 512], 1.0, source.clone())
+            .await
+            .unwrap();
+
+        let ball = store.get_ball(id).await.unwrap().unwrap();
+        assert_eq!(ball.content_list[0].source, source, "来源回合必须随球落库");
+
+        // create_ball 保持旧行为：来源为空串
+        let plain = core
+            .create_ball(&store, "无关的一句话", &vec![0.4; 512], 1.0)
+            .await
+            .unwrap();
+        let plain_ball = store.get_ball(plain).await.unwrap().unwrap();
+        assert_eq!(plain_ball.content_list[0].source, TurnId(String::new()));
     }
 
     #[tokio::test]

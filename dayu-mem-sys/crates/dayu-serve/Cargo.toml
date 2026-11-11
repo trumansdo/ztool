@@ -1,0 +1,32 @@
+[package]
+name = "dayu-serve"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "dayu-serve"
+path = "src/main.rs"
+
+[dependencies]
+dayu-core = { path = "../dayu-core" }
+dayu-domain = { path = "../dayu-domain" }
+dayu-storage = { path = "../dayu-storage" }
+dayu-config = { path = "../dayu-config" }
+dayu-embedding = { path = "../dayu-embedding" }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "signal"] }
+axum = "0.8"
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+tracing-subscriber = { workspace = true }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+
+[features]
+# 评测用 LM Studio / SiliconFlow 走 http；本地模型走 onnx。
+default = ["http"]
+http = ["dayu-core/http"]
+onnx = ["dayu-core/onnx"]

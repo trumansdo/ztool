@@ -10,6 +10,7 @@ members = [
     "crates/dayu-observability",
     "crates/dayu-core",
     "crates/dayu-napi",
+    "crates/dayu-serve",
     "crates/dayu-cli",
     "crates/dayu-testkit",
 ]
