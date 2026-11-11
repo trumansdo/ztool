@@ -162,7 +162,11 @@ expected version >= '1.31.x', but got '1.17.1'
 New-Item -ItemType Junction -Path 'models\infinilabs' -Target 'E:\dev_data\huggingface_models\infinilabs'
 ```
 
-cygwin 的 `ln -s` 生成的是带 `/cygdrive/...` 目标的链接，Rust（原生 Windows 二进制）`Path::exists()` 直接返回 false——测试会静默走「模型不存在 → 跳过」分支，看着全绿其实一个都没跑。判断方法：`cargo test -p dayu-core --features onnx --test e2e` 如果 `finished in 0.00s`，就是模型没被找到（真跑要 0.5s 以上）。
+cygwin 的 `ln -s` 生成的是带 `/cygdrive/...` 目标的链接，Rust（原生 Windows 二进制）`Path::exists()` 直接返回 false。这个坑曾经让所有 ONNX 用例「静默跳过」而看着全绿，所以现在改成**硬失败**：
+
+`dayu_testkit::require_onnx_model_paths()` 找不到模型就 panic，并打印处理指引（junction 命令 + 环境变量 + 「不想跑就别开 `--features onnx`」）。缺模型 = 红，不再有「跳过」这条路径。
+
+历史判据留作参考：修之前 `cargo test -p dayu-core --features onnx --test e2e` 显示 `finished in 0.00s` 就是模型没被找到（真跑要 0.5s 以上）。
 
 ## 常用命令
 

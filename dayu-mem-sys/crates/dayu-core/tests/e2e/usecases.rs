@@ -13,6 +13,9 @@
 //! 模型路径可用环境变量覆盖：
 //!   DAYU_EMBEDDING_MODEL_PATH=models/infinilabs/pizza-embed-zh-small-v1/onnx/model.onnx
 //!   DAYU_EMBEDDING_TOKENIZER_PATH=models/infinilabs/pizza-embed-zh-small-v1/tokenizer.json
+//!
+//! **模型不存在会 panic，不会跳过**：跳过会让这套用例在缺模型时静默变绿，
+//! 看着全过其实一个都没跑。缺模型就去补模型，或不要开 `--features onnx`。
 
 // 未启用 `onnx` 时整个用例文件为空，避免 `OrtEmbeddingBackend` 导入失败。
 #![cfg(feature = "onnx")]
@@ -27,45 +30,26 @@ use std::sync::{Arc, LazyLock};
 // 全局单例：ort 只允许一个 Environment per process
 // ============================================================
 
-/// 模型加载结果缓存：`None` 表示本机没有可用模型，用例应跳过而不是打红。
-static GLOBAL_EMBEDDING: LazyLock<Option<Arc<dyn EmbeddingBackend>>> = LazyLock::new(|| {
+/// 全局嵌入后端（真模型），进程内只加载一次。
+///
+/// 模型缺失**直接 panic**，不跳过——跳过会让这套用例在缺模型时静默变绿。
+/// 详见 `dayu_testkit::require_onnx_model_paths` 的注释。
+static GLOBAL_EMBEDDING: LazyLock<Arc<dyn EmbeddingBackend>> = LazyLock::new(|| {
     // 必须在任何 ort 调用之前：系统 PATH 里那个旧 onnxruntime.dll 会先被找到
     dayu_testkit::ensure_ort_dylib();
 
-    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("无法找到 workspace 根目录");
-    let model_path = std::env::var("DAYU_EMBEDDING_MODEL_PATH")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/onnx/model.onnx"));
-    let tokenizer_path = std::env::var("DAYU_EMBEDDING_TOKENIZER_PATH")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/tokenizer.json"));
-    if !model_path.exists() || !tokenizer_path.exists() {
-        eprintln!(
-            "跳过用例：ONNX 模型不存在（{} / {}）",
-            model_path.display(),
-            tokenizer_path.display()
-        );
-        return None;
-    }
-    match dayu_embedding::OrtEmbeddingBackend::load(&model_path, &tokenizer_path, 512) {
-        Ok(b) => Some(Arc::new(b) as Arc<dyn EmbeddingBackend>),
-        Err(e) => {
-            eprintln!("跳过用例：ONNX 模型加载失败（{e}）");
-            None
-        }
-    }
+    let (model_path, tokenizer_path) = dayu_testkit::require_onnx_model_paths();
+    let backend = dayu_embedding::OrtEmbeddingBackend::load(&model_path, &tokenizer_path, 512)
+        .expect("ONNX 模型加载失败");
+    Arc::new(backend) as Arc<dyn EmbeddingBackend>
 });
 
-fn embedding_backend() -> Option<Arc<dyn EmbeddingBackend>> {
+fn embedding_backend() -> Arc<dyn EmbeddingBackend> {
     GLOBAL_EMBEDDING.clone()
 }
 
-fn core() -> Option<DayuCore> {
-    let backend = embedding_backend()?;
-    Some(DayuCore::new(Arc::new(Config::default()), backend).expect("DayuCore 创建失败"))
+fn core() -> DayuCore {
+    DayuCore::new(Arc::new(Config::default()), embedding_backend()).expect("DayuCore 创建失败")
 }
 
 fn joined_text(blocks: &[InjectionBlock]) -> String {
@@ -82,10 +66,7 @@ fn joined_text(blocks: &[InjectionBlock]) -> String {
 
 #[tokio::test]
 async fn create_ball_then_recall_returns_its_content() {
-    let Some(core) = core() else {
-        eprintln!("跳过：本机无可用 ONNX 模型");
-        return;
-    };
+    let core = core();
     let store = temp_store();
     let emb = core.embedding_backend().embed("用户的生日是 3 月 5 日").await.unwrap();
 
@@ -104,10 +85,7 @@ async fn create_ball_then_recall_returns_its_content() {
 
 #[tokio::test]
 async fn create_ball_with_embedding_stores_content() {
-    let Some(core) = core() else {
-        eprintln!("跳过：本机无可用 ONNX 模型");
-        return;
-    };
+    let core = core();
     let store = temp_store();
 
     let emb = core.embedding_backend().embed("Python 的 GIL 限制了多线程并行").await.unwrap();
@@ -130,10 +108,7 @@ async fn create_ball_with_embedding_stores_content() {
 
 #[tokio::test]
 async fn linked_balls_flow_water_to_related_query() {
-    let Some(core) = core() else {
-        eprintln!("跳过：本机无可用 ONNX 模型");
-        return;
-    };
+    let core = core();
     let store = temp_store();
 
     let emb1 = core.embedding_backend().embed("Rust 的所有权系统保证内存安全").await.unwrap();
@@ -164,10 +139,7 @@ async fn linked_balls_flow_water_to_related_query() {
 
 #[tokio::test]
 async fn multi_source_recall_aggregates_from_multiple_starting_balls() {
-    let Some(core) = core() else {
-        eprintln!("跳过：本机无可用 ONNX 模型");
-        return;
-    };
+    let core = core();
     let store = temp_store();
 
     let emb1 = core.embedding_backend().embed("Python 装饰器").await.unwrap();
@@ -200,10 +172,7 @@ async fn multi_source_recall_aggregates_from_multiple_starting_balls() {
 
 #[tokio::test]
 async fn recall_returns_injection_blocks_with_confidence() {
-    let Some(core) = core() else {
-        eprintln!("跳过：本机无可用 ONNX 模型");
-        return;
-    };
+    let core = core();
     let store = temp_store();
 
     let emb = core.embedding_backend().embed("重要信息").await.unwrap();
@@ -230,10 +199,7 @@ async fn recall_returns_injection_blocks_with_confidence() {
 
 #[tokio::test]
 async fn archive_sweep_removes_weak_inactive_balls() {
-    let Some(core) = core() else {
-        eprintln!("跳过：本机无可用 ONNX 模型");
-        return;
-    };
+    let core = core();
     let store = temp_store();
 
     let emb = core.embedding_backend().embed("临时信息").await.unwrap();
@@ -247,10 +213,7 @@ async fn archive_sweep_removes_weak_inactive_balls() {
         archive_inactive_days: 0.0,
         ..Config::default()
     };
-    let Some(backend) = embedding_backend() else {
-        eprintln!("跳过：本机无可用 ONNX 模型");
-        return;
-    };
+    let backend = embedding_backend();
     let archive_core = DayuCore::new(Arc::new(cfg), backend).unwrap();
 
     let report = archive_core.archive_sweep(&store).await.unwrap();

@@ -250,46 +250,24 @@ fn l2_normalize(vec: &mut [f32]) {
 //   ORT_DYLIB_PATH=<...>/onnxruntime.dll \
 //   cargo test -p dayu-embedding --features onnx -- --ignored
 //
-// 模型目录可用 DAYU_MODEL_DIR 覆盖，默认 models/infinilabs/pizza-embed-zh-small-v1。
+// 模型路径可用 DAYU_EMBEDDING_MODEL_PATH / DAYU_EMBEDDING_TOKENIZER_PATH 覆盖，
+// 默认 models/infinilabs/pizza-embed-zh-small-v1。
 // 模型缺失时测试直接失败（不静默跳过）——跳过等于没测。
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use dayu_domain::math::cosine_similarity;
-    use std::path::PathBuf;
     use std::sync::OnceLock;
 
-    /// 默认模型目录（仓库内软链接，指向外部模型仓库）
-    fn model_dir() -> PathBuf {
-        std::env::var_os("DAYU_MODEL_DIR")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../models/infinilabs/pizza-embed-zh-small-v1")
-            })
-    }
-
-    fn model_path() -> PathBuf {
-        model_dir().join("onnx/model.onnx")
-    }
-
-    fn tokenizer_path() -> PathBuf {
-        model_dir().join("tokenizer.json")
-    }
-
-    /// 共享后端实例：模型加载 ~0.5s，只加载一次
+    /// 共享后端实例：模型加载 ~0.5s，只加载一次。
+    ///
+    /// 模型缺失由 `require_onnx_model_paths` 直接 panic（含处理指引），不跳过。
     fn backend() -> &'static OrtEmbeddingBackend {
         static BACKEND: OnceLock<OrtEmbeddingBackend> = OnceLock::new();
         BACKEND.get_or_init(|| {
             dayu_testkit::ensure_ort_dylib();
-            let (mp, tp) = (model_path(), tokenizer_path());
-            assert!(
-                mp.exists(),
-                "模型文件缺失: {} —— 请设置 DAYU_MODEL_DIR 或确认 models/infinilabs 链接存在",
-                mp.display()
-            );
-            assert!(tp.exists(), "tokenizer 缺失: {}", tp.display());
+            let (mp, tp) = dayu_testkit::require_onnx_model_paths();
             OrtEmbeddingBackend::load(&mp, &tp, 512).expect("load model")
         })
     }
@@ -321,7 +299,8 @@ mod tests {
     fn missing_model_file_returns_err() {
         // 错误路径：不需要真模型，但走同一条 load 路径
         let bogus = std::env::temp_dir().join("dayu-no-such-model.onnx");
-        let err = OrtEmbeddingBackend::load(&bogus, &tokenizer_path(), 512);
+        let (_, tokenizer) = dayu_testkit::require_onnx_model_paths();
+        let err = OrtEmbeddingBackend::load(&bogus, &tokenizer, 512);
         assert!(err.is_err(), "不存在的模型文件应返回 Err");
     }
 
@@ -436,9 +415,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     #[ignore = "requires ONNX model files"]
     async fn concurrent_embedding_is_safe() {
-        let b = Arc::new(
-            OrtEmbeddingBackend::load(&model_path(), &tokenizer_path(), 512).expect("load model"),
-        );
+        let (model, tokenizer) = dayu_testkit::require_onnx_model_paths();
+        let b = Arc::new(OrtEmbeddingBackend::load(&model, &tokenizer, 512).expect("load model"));
 
         let mut handles = Vec::new();
         for i in 0..8 {

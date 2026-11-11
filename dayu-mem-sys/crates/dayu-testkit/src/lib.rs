@@ -86,6 +86,39 @@ pub fn ensure_ort_dylib() {
     unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll) };
 }
 
+/// 取 ONNX 模型与 tokenizer 的路径，**找不到就 panic**
+///
+/// 环境变量优先（`DAYU_EMBEDDING_MODEL_PATH` / `DAYU_EMBEDDING_TOKENIZER_PATH`），
+/// 否则用仓库内默认位置 `models/infinilabs/pizza-embed-zh-small-v1/`。
+///
+/// 为什么找不到要 panic 而不是跳过：跳过会让整套 ONNX 测试在缺少模型时**静默变绿**，
+/// 看着 100% 通过，其实一个都没跑。这个坑真实发生过——`models/infinilabs` 曾是
+/// cygwin 符号链接，原生 Windows 二进制解析不了 `/cygdrive/...` 目标，
+/// `Path::exists()` 恒为 false，所有 ONNX 用例安静地走跳过分支。
+///
+/// 要跑 ONNX 测试就必须有模型；没有就红，让人去补模型或关掉 `onnx` feature。
+pub fn require_onnx_model_paths() -> (std::path::PathBuf, std::path::PathBuf) {
+    let default_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../models/infinilabs/pizza-embed-zh-small-v1");
+    let model = std::env::var_os("DAYU_EMBEDDING_MODEL_PATH")
+        .map_or_else(|| default_dir.join("onnx/model.onnx"), std::path::PathBuf::from);
+    let tokenizer = std::env::var_os("DAYU_EMBEDDING_TOKENIZER_PATH")
+        .map_or_else(|| default_dir.join("tokenizer.json"), std::path::PathBuf::from);
+
+    let missing: Vec<String> = [(model.as_path(), "模型"), (tokenizer.as_path(), "tokenizer")]
+        .iter()
+        .filter(|(p, _)| !p.exists())
+        .map(|(p, what)| format!("  {what}: {}", p.display()))
+        .collect();
+
+    assert!(
+        missing.is_empty(),
+        "ONNX 测试需要真实模型，但以下文件不存在：\n{}\n\n处理方式：\n1. 确认 `models/infinilabs` 是**目录联接（junction）**而不是 cygwin 符号链接——Windows 上 `ln -s` 生成的是 `/cygdrive/...` 目标，原生二进制读不到：\n   New-Item -ItemType Junction -Path 'models\\infinilabs' -Target 'E:\\dev_data\\huggingface_models\\infinilabs'\n2. 或用环境变量指定：DAYU_EMBEDDING_MODEL_PATH / DAYU_EMBEDDING_TOKENIZER_PATH\n3. 不想跑 ONNX 测试就不要开 `--features onnx`",
+        missing.join("\n")
+    );
+    (model, tokenizer)
+}
+
 // ============================================================
 // 球夹具
 // ============================================================

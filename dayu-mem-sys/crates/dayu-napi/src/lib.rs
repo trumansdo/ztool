@@ -796,26 +796,11 @@ impression_threshold = 0.4
         );
     }
 
-    /// 配置合法且模型可用时 init 应成功；模型不存在时跳过
+    /// 配置合法且模型可用时 init 应成功；模型不存在时 panic
     #[test]
     fn init_with_valid_config() {
-        let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(|p| p.parent())
-            .expect("无法定位 workspace 根目录")
-            .to_path_buf();
-        let model = std::env::var("DAYU_EMBEDDING_MODEL_PATH").map_or_else(
-            |_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/onnx/model.onnx"),
-            std::path::PathBuf::from,
-        );
-        let tokenizer = std::env::var("DAYU_EMBEDDING_TOKENIZER_PATH").map_or_else(
-            |_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/tokenizer.json"),
-            std::path::PathBuf::from,
-        );
-        if !model.exists() || !tokenizer.exists() {
-            eprintln!("跳过 init_with_valid_config: 模型文件不存在");
-            return;
-        }
+        // 模型缺失直接 panic（不跳过）：跳过会让这个用例在缺模型时静默变绿
+        let (model, tokenizer) = dayu_testkit::require_onnx_model_paths();
         // 模型在 → ort 会真的建 Session，此时必须让 load-dynamic 找到仓库自带的
         // ONNX Runtime，否则会先命中系统 PATH 里的旧版本而版本不符
         dayu_testkit::ensure_ort_dylib();

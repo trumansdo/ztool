@@ -1007,51 +1007,29 @@ mod tests {
     // 全局单例：ort 只允许一个 Environment per process
     // ============================================================
 
-    /// 模型加载结果缓存：`None` 表示本机没有可用模型，依赖它的用例应跳过。
+    /// 全局嵌入后端（真模型），进程内只加载一次。
     ///
-    /// 用 `Option` 而不是 panic：模型文件在 `models/` 下（可能是软链接），
-    /// 不是每台机器、每个 CI 都有。测试应报告「跳过」而不是把整套测试打红。
+    /// 模型缺失**直接 panic**，不跳过：跳过会让 ONNX 测试在缺模型时静默变绿。
+    /// 详见 `dayu_testkit::require_onnx_model_paths` 的注释。
     #[cfg(feature = "onnx")]
-    static GLOBAL_EMBEDDING: LazyLock<Option<Arc<dyn EmbeddingBackend>>> = LazyLock::new(|| {
+    static GLOBAL_EMBEDDING: LazyLock<Arc<dyn EmbeddingBackend>> = LazyLock::new(|| {
         // 必须在任何 ort 调用之前：系统 PATH 里那个旧 onnxruntime.dll 会先被找到
         dayu_testkit::ensure_ort_dylib();
 
-        let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(|p| p.parent())
-            .expect("无法找到 workspace 根目录");
-        let model_path = std::env::var("DAYU_EMBEDDING_MODEL_PATH")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/onnx/model.onnx"));
-        let tokenizer_path = std::env::var("DAYU_EMBEDDING_TOKENIZER_PATH")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| workspace_root.join("models/infinilabs/pizza-embed-zh-small-v1/tokenizer.json"));
-        if !model_path.exists() || !tokenizer_path.exists() {
-            eprintln!(
-                "跳过 ONNX 用例：模型不存在（{} / {}）",
-                model_path.display(),
-                tokenizer_path.display()
-            );
-            return None;
-        }
-        match dayu_embedding::OrtEmbeddingBackend::load(&model_path, &tokenizer_path, 512) {
-            Ok(b) => Some(Arc::new(b) as Arc<dyn EmbeddingBackend>),
-            Err(e) => {
-                eprintln!("跳过 ONNX 用例：模型加载失败（{e}）");
-                None
-            }
-        }
+        let (model_path, tokenizer_path) = dayu_testkit::require_onnx_model_paths();
+        let backend = dayu_embedding::OrtEmbeddingBackend::load(&model_path, &tokenizer_path, 512)
+            .expect("ONNX 模型加载失败");
+        Arc::new(backend) as Arc<dyn EmbeddingBackend>
     });
 
     #[cfg(feature = "onnx")]
-    fn ort_backend() -> Option<Arc<dyn EmbeddingBackend>> {
+    fn ort_backend() -> Arc<dyn EmbeddingBackend> {
         GLOBAL_EMBEDDING.clone()
     }
 
     #[cfg(feature = "onnx")]
-    fn make_ort_core() -> Option<DayuCore> {
-        let backend = ort_backend()?;
-        Some(DayuCore::new(Arc::new(Config::default()), backend).expect("DayuCore::new 应成功"))
+    fn make_ort_core() -> DayuCore {
+        DayuCore::new(Arc::new(Config::default()), ort_backend()).expect("DayuCore::new 应成功")
     }
 
     // ============================================================
@@ -1077,10 +1055,7 @@ mod tests {
     #[tokio::test]
     async fn dayu_core_recall_returns_blocks() {
         let store = temp_store();
-        let Some(core) = make_ort_core() else {
-            eprintln!("跳过 dayu_core_recall_returns_blocks：本机无可用 ONNX 模型");
-            return;
-        };
+        let core = make_ort_core();
 
         // 用真实嵌入建球
         let emb_a = core.embed_text("Rust的所有权系统保证内存安全").await.unwrap();
@@ -1106,10 +1081,7 @@ mod tests {
         let store = temp_store();
         let config = Arc::new(Config::default());
         let loss_model: Arc<dyn LossModel> = Arc::new(dayu_flow::loss::ConstantLossModel);
-        let Some(backend) = ort_backend() else {
-            eprintln!("跳过 dayu_core_with_constant_loss_model：本机无可用 ONNX 模型");
-            return;
-        };
+        let backend = ort_backend();
         let core = DayuCore::with_loss_model(config, backend, loss_model).unwrap();
 
         let emb = core.embed_text("测试内容").await.unwrap();
