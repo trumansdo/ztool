@@ -1312,6 +1312,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_turn_balls_batch_chains_same_session_only() {
+        let core = archive_test_core();
+        let store = temp_store();
+
+        // 两条会话交错灌入：s1 三回合、s2 两回合
+        let mk = |text: &'static str, sid: &'static str| NewBall {
+            content: text,
+            embedding: &[0.1; 512],
+            size: 1.0,
+            source: TurnId(sid.to_string()),
+            chain_key: Some(sid.to_string()),
+        };
+        let items = vec![
+            mk("s1-0", "s1"),
+            mk("s2-0", "s2"),
+            mk("s1-1", "s1"),
+            mk("s2-1", "s2"),
+            mk("s1-2", "s1"),
+        ];
+
+        let ids = core
+            .create_turn_balls_batch(&store, &items, Some(0.5))
+            .await
+            .unwrap();
+        assert_eq!(ids.len(), 5);
+
+        let pipes = store.list_pipes().await.unwrap();
+        // 只有同 session 的相邻回合连边：s1 两条、s2 一条；跨会话不得连
+        assert_eq!(pipes.len(), 3, "实际管道：{pipes:?}");
+        let has = |a: BallId, b: BallId| {
+            let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+            pipes.iter().any(|p| p.a == lo && p.b == hi)
+        };
+        assert!(has(ids[0], ids[2]), "s1 的 0↔1 应连边");
+        assert!(has(ids[2], ids[4]), "s1 的 1↔2 应连边");
+        assert!(has(ids[1], ids[3]), "s2 的 0↔1 应连边");
+        assert!(!has(ids[0], ids[1]), "不同会话不得连边");
+        assert!(
+            pipes.iter().all(|p| (p.pipe_base_thickness - 0.5).abs() < 1e-9),
+            "管道粗细应等于 link_weight"
+        );
+
+        // link_weight = None：只建球不建边
+        let store2 = temp_store();
+        core.create_turn_balls_batch(&store2, &items, None)
+            .await
+            .unwrap();
+        assert!(store2.list_pipes().await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn link_balls_rejects_self_and_missing() {
         let core = archive_test_core();
         let store = temp_store();
