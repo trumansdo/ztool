@@ -206,6 +206,59 @@ pub struct Config {
     pub metrics_enabled: bool,
     /// `metrics.jsonl` 保留天数
     pub metrics_retention_days: usize,
+
+    // --- 球合并参数 ---
+    /// 球合并（docs/13）
+    pub merge: MergeConfig,
+}
+
+/// 球合并配置（`docs/13-球合并机制.md` §5）
+///
+/// 两条路径：写入端兜底（新记忆进来时先查相似球）与离线合并（定时扫描全库）。
+/// 两者共用同一套合并规则，只是候选集与阈值不同。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MergeConfig {
+    /// 写入端兜底是否启用
+    pub write_enabled: bool,
+    /// 写入端相似度阈值：新记忆与已有球的余弦 ≥ 此值则合并进已有球
+    ///
+    /// 下限约束：必须高于**语义反转**的余弦（实测 Qwen3-Embedding-4B 为 0.828），
+    /// 否则「我喜欢」与「我不喜欢」会被合并。上限约束：必须低于
+    /// 「同事实不同细节」（0.9315），否则会把相关但不同的记忆吃掉。
+    pub write_threshold: f64,
+    /// 写入端检索邻居数
+    pub write_top_k: usize,
+
+    /// 离线合并是否启用
+    pub offline_enabled: bool,
+    /// 离线合并阈值（比写入端更松，用于覆盖换词改写）
+    pub offline_threshold: f64,
+    /// 一轮最多扫描多少个球
+    pub offline_max_balls: usize,
+    /// 一轮最多执行多少次合并
+    pub offline_max_merges: usize,
+    /// 是否处理归档球（默认否：归档球被唤醒后语义可能漂移）
+    pub merge_archived: bool,
+
+    /// 试运行：只统计不落库，用于调阈值
+    pub dry_run: bool,
+}
+
+impl Default for MergeConfig {
+    fn default() -> Self {
+        Self {
+            write_enabled: true,
+            write_threshold: 0.90,
+            write_top_k: 3,
+            offline_enabled: true,
+            offline_threshold: 0.88,
+            offline_max_balls: 2_000,
+            offline_max_merges: 500,
+            merge_archived: false,
+            dry_run: false,
+        }
+    }
 }
 
 impl Default for Config {
@@ -276,6 +329,7 @@ impl Default for Config {
             log_retention_days: 7,
             metrics_enabled: true,
             metrics_retention_days: 90,
+            merge: MergeConfig::default(),
         }
     }
 }

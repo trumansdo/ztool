@@ -4,7 +4,7 @@
 //! 所有系数、阈值、预算可配置。
 
 use arc_swap::ArcSwap;
-use dayu_domain::types::Config;
+use dayu_domain::types::{Config, MergeConfig};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -279,6 +279,48 @@ pub fn validate_config(config: &Config) -> Result<(), ConfigError> {
             "size_saturation_gamma 必须 >= 0".into(),
         ));
     }
+    validate_merge(&config.merge)?;
+    Ok(())
+}
+
+/// 球合并配置校验（`docs/13-球合并机制.md` §4、§5）
+fn validate_merge(m: &MergeConfig) -> Result<(), ConfigError> {
+    // 0.8 是硬下限：实测语义反转（喜欢/不喜欢）余弦 0.828，
+    // 阈值低于它必然把否定句合并掉，这类错误静默且不可逆。
+    const MIN_THRESHOLD: f64 = 0.80;
+
+    for (name, value) in [
+        ("merge.write_threshold", m.write_threshold),
+        ("merge.offline_threshold", m.offline_threshold),
+    ] {
+        if !value.is_finite() || !(MIN_THRESHOLD..=1.0).contains(&value) {
+            return Err(ConfigError::Validation(format!(
+                "{name} 必须在 [{MIN_THRESHOLD}, 1.0] 内（低于 {MIN_THRESHOLD} 会把语义反转当成重复记忆合并），当前: {value}"
+            )));
+        }
+    }
+    // 写入端应更严格：它直接决定新记忆是否被吞掉，而离线合并有 dry_run 与批次上限
+    if m.write_threshold < m.offline_threshold {
+        return Err(ConfigError::Validation(format!(
+            "merge.write_threshold ({}) 必须 >= merge.offline_threshold ({})",
+            m.write_threshold, m.offline_threshold
+        )));
+    }
+    if m.write_top_k == 0 {
+        return Err(ConfigError::Validation(
+            "merge.write_top_k 必须 > 0".into(),
+        ));
+    }
+    if m.offline_max_balls == 0 {
+        return Err(ConfigError::Validation(
+            "merge.offline_max_balls 必须 > 0".into(),
+        ));
+    }
+    if m.offline_max_merges == 0 {
+        return Err(ConfigError::Validation(
+            "merge.offline_max_merges 必须 > 0".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -335,6 +377,71 @@ impression_threshold = 0.3
     fn default_config_is_valid() {
         let config = Config::default();
         assert!(validate_config(&config).is_ok());
+    }
+
+    // ---------- 球合并配置（docs/13 §4、§5）----------
+
+    #[test]
+    fn merge_defaults_match_design() {
+        let m = Config::default().merge;
+        assert!(m.write_enabled && m.offline_enabled);
+        assert_eq!(m.write_threshold, 0.90);
+        assert_eq!(m.offline_threshold, 0.88);
+        // 写入端必须比离线更严格
+        assert!(m.write_threshold >= m.offline_threshold);
+        assert!(!m.merge_archived);
+        assert!(!m.dry_run);
+    }
+
+    #[test]
+    fn merge_threshold_below_semantic_reversal_is_rejected() {
+        // 语义反转实测余弦 0.828：阈值低于 0.80 必然把否定句合并掉
+        let mut config = Config::default();
+        config.merge.offline_threshold = 0.5;
+        config.merge.write_threshold = 0.5;
+        assert!(validate_config(&config).is_err());
+    }
+
+    #[test]
+    fn merge_write_threshold_must_not_be_looser_than_offline() {
+        let mut config = Config::default();
+        config.merge.write_threshold = 0.85;
+        config.merge.offline_threshold = 0.90;
+        assert!(
+            validate_config(&config).is_err(),
+            "写入端比离线松，等于新记忆更容易被吞掉"
+        );
+    }
+
+    #[test]
+    fn merge_zero_limits_are_rejected() {
+        for mutate in [
+            (|c: &mut Config| c.merge.write_top_k = 0) as fn(&mut Config),
+            |c: &mut Config| c.merge.offline_max_balls = 0,
+            |c: &mut Config| c.merge.offline_max_merges = 0,
+        ] {
+            let mut config = Config::default();
+            mutate(&mut config);
+            assert!(validate_config(&config).is_err());
+        }
+    }
+
+    #[test]
+    fn merge_section_parses_from_toml() {
+        let toml = format!(
+            "{VALID_TOML}
+[merge]
+write_threshold = 0.91
+offline_threshold = 0.87
+dry_run = true
+"
+        );
+        let config: Config = toml::from_str(&toml).unwrap();
+        assert_eq!(config.merge.write_threshold, 0.91);
+        assert_eq!(config.merge.offline_threshold, 0.87);
+        assert!(config.merge.dry_run);
+        // 段内未写的字段回落到默认
+        assert_eq!(config.merge.write_top_k, MergeConfig::default().write_top_k);
     }
 
     #[test]

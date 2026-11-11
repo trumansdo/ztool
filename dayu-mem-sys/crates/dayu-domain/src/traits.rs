@@ -102,6 +102,15 @@ pub trait StorageTx: Send + Sync {
     /// 插入或更新管道
     async fn upsert_pipe(&mut self, pipe: &Pipe) -> Result<(), StorageError>;
 
+    /// 物理删除球（`docs/13` R6）
+    ///
+    /// **调用方责任**：必须先把该球的边与内容归属处理完（合并到保留球），
+    /// 再调此方法。实现侧会顺带断掉该球的所有管道边，但不会帮忙搬内容。
+    ///
+    /// 幂等：删除不存在的球不报错。合并流程里同一球可能被多簇引用，
+    /// 让底层容忍重复删除比让每个调用方自己防重更省事。
+    async fn delete_ball(&mut self, id: BallId) -> Result<(), StorageError>;
+
     /// 提交事务
     async fn commit(self: Box<Self>) -> Result<(), StorageError>;
 

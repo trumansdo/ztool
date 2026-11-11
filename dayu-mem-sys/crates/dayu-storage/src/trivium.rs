@@ -348,6 +348,7 @@ impl StorageBackend for TriviumStorage {
             db: Arc::clone(&self.db),
             dirty_balls: HashMap::new(),
             dirty_pipes: HashMap::new(),
+            deleted_balls: Vec::new(),
         }))
     }
 }
@@ -360,6 +361,8 @@ struct TriviumTx {
     db: Arc<Mutex<Database<f32>>>,
     dirty_balls: HashMap<BallId, Ball>,
     dirty_pipes: HashMap<PipeId, Pipe>,
+    /// 待物理删除的球（`docs/13` R6），保序以便日志可读
+    deleted_balls: Vec<BallId>,
 }
 
 #[async_trait::async_trait]
@@ -451,6 +454,17 @@ impl StorageTx for TriviumTx {
         Ok(())
     }
 
+    async fn delete_ball(&mut self, id: BallId) -> Result<(), StorageError> {
+        // 同事务内先 upsert 又删除 = 抵消：连写入都不必发生
+        self.dirty_balls.remove(&id);
+        // 涉及该球的待写管道一并丢弃，否则 commit 时会重新建出悬挂边
+        self.dirty_pipes.retain(|_, p| p.a != id && p.b != id);
+        if !self.deleted_balls.contains(&id) {
+            self.deleted_balls.push(id);
+        }
+        Ok(())
+    }
+
     async fn commit(self: Box<Self>) -> Result<(), StorageError> {
         let mut db = self
             .db
@@ -470,6 +484,31 @@ impl StorageTx for TriviumTx {
                 .map_err(|e| StorageError::Io(format!("[TRIVIUM_UPSERT_EDGE] {e}")))?;
             db.upsert_edge(b, a, PIPE_LABEL, weight, meta)
                 .map_err(|e| StorageError::Io(format!("[TRIVIUM_UPSERT_EDGE] {e}")))?;
+        }
+
+        // ---- 物理删除（docs/13 R6）----
+        // 顺序：先断边，再删节点。不依赖底层 delete 的级联行为——
+        // 自己断干净，无论 triviumdb 是否级联都不会留悬挂边。
+        let mut to_delete: Vec<NodeId> = Vec::with_capacity(self.deleted_balls.len());
+        for id in &self.deleted_balls {
+            let node = to_node(*id);
+            // 幂等：库里已经没有就直接跳过（delete_many_atomic 对不存在的节点
+            // 返回 NodeNotFound，会让整批失败）
+            if db.get(node).map_err(|e| StorageError::Io(format!("[TRIVIUM_GET] {e}")))?.is_none() {
+                continue;
+            }
+            let edges = db
+                .get_edges(node)
+                .map_err(|e| StorageError::Io(format!("[TRIVIUM_EDGES] {e}")))?;
+            for e in edges.iter().filter(|e| e.label == PIPE_LABEL) {
+                db.unlink(node, e.target_id)
+                    .map_err(|e| StorageError::Io(format!("[TRIVIUM_UNLINK] {e}")))?;
+            }
+            to_delete.push(node);
+        }
+        if !to_delete.is_empty() {
+            db.delete_many_atomic(&to_delete)
+                .map_err(|e| StorageError::Io(format!("[TRIVIUM_DELETE] {e}")))?;
         }
 
         db.flush()
@@ -541,6 +580,101 @@ mod tests {
         let store = TriviumStorage::new(&path_str).unwrap();
         let got = store.get_ball(BallId(7)).await.unwrap().unwrap();
         assert!((got.ball_stored_size - 4.5).abs() < 1e-9);
+    }
+
+    // ---------- 物理删除（docs/13 R6）----------
+
+    #[tokio::test]
+    async fn delete_ball_removes_ball_and_its_pipes() {
+        let (store, _dir) = temp_store();
+        let a = sample_ball(1, 1.0, vec![0.1; 512]);
+        let b = sample_ball(2, 1.0, vec![0.2; 512]);
+        let pipe = sample_pipe(1, 1, 2, 0.5);
+
+        let mut tx = store.begin_transaction().await.unwrap();
+        tx.upsert_ball(&a).await.unwrap();
+        tx.upsert_ball(&b).await.unwrap();
+        tx.upsert_pipe(&pipe).await.unwrap();
+        tx.commit().await.unwrap();
+
+        assert_eq!(store.list_pipes().await.unwrap().len(), 1);
+
+        let mut tx = store.begin_transaction().await.unwrap();
+        tx.delete_ball(BallId(1)).await.unwrap();
+        tx.commit().await.unwrap();
+
+        assert!(
+            store.get_ball(BallId(1)).await.unwrap().is_none(),
+            "被删的球必须查不到"
+        );
+        assert!(
+            store.get_ball(BallId(2)).await.unwrap().is_some(),
+            "邻居球不能受牵连"
+        );
+        assert!(
+            store.list_pipes().await.unwrap().is_empty(),
+            "与被删球相连的管道必须一起消失，不留悬挂边"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_ball_is_idempotent() {
+        let (store, _dir) = temp_store();
+        let mut tx = store.begin_transaction().await.unwrap();
+        tx.upsert_ball(&sample_ball(1, 1.0, vec![0.1; 512]))
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        let mut tx = store.begin_transaction().await.unwrap();
+        tx.delete_ball(BallId(1)).await.unwrap();
+        tx.commit().await.unwrap();
+
+        // 第二次删同一个球：不报错（合并流程里同一球可能被多簇引用）
+        let mut tx = store.begin_transaction().await.unwrap();
+        tx.delete_ball(BallId(1)).await.unwrap();
+        tx.commit().await.unwrap();
+
+        // 删一个从未存在过的球：同样不报错
+        let mut tx = store.begin_transaction().await.unwrap();
+        tx.delete_ball(BallId(999)).await.unwrap();
+        tx.commit().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn upsert_then_delete_in_one_tx_leaves_nothing() {
+        let (store, _dir) = temp_store();
+        let mut tx = store.begin_transaction().await.unwrap();
+        tx.upsert_ball(&sample_ball(1, 1.0, vec![0.1; 512]))
+            .await
+            .unwrap();
+        tx.delete_ball(BallId(1)).await.unwrap();
+        tx.commit().await.unwrap();
+
+        assert!(
+            store.get_ball(BallId(1)).await.unwrap().is_none(),
+            "同事务内先写后删必须抵消，球不应落库"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_ball_drops_pending_pipes_of_that_ball() {
+        let (store, _dir) = temp_store();
+        let mut tx = store.begin_transaction().await.unwrap();
+        tx.upsert_ball(&sample_ball(1, 1.0, vec![0.1; 512]))
+            .await
+            .unwrap();
+        tx.upsert_ball(&sample_ball(2, 1.0, vec![0.2; 512]))
+            .await
+            .unwrap();
+        tx.upsert_pipe(&sample_pipe(1, 1, 2, 0.5)).await.unwrap();
+        tx.delete_ball(BallId(1)).await.unwrap();
+        tx.commit().await.unwrap();
+
+        assert!(
+            store.list_pipes().await.unwrap().is_empty(),
+            "删除球时，该事务里尚未落库的管道也必须丢弃"
+        );
     }
 
     #[tokio::test]

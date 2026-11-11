@@ -86,3 +86,28 @@ log_level = "warn"
 log_retention_days = 3
 metrics_enabled = true
 metrics_retention_days = 3
+
+# ============================================================
+# 球合并（docs/13-球合并机制.md）
+# ------------------------------------------------------------
+# 两条路径共用同一套合并规则，只是候选集与阈值不同。
+# 阈值必须落在「语义反转」与「同事实不同细节」之间：
+#   完全副本 0.9691 / 同事实不同细节 0.9315 / 换词改写 0.9161 / 语义反转 0.8282
+# 低于 0.80 会被配置校验直接拒绝。
+# ============================================================
+
+[merge]
+# 写入端兜底：建球前先查邻居，命中则合并进已有球
+write_enabled = true
+write_threshold = 0.90
+write_top_k = 3
+
+# 离线合并：定时扫描全库，清理历史遗留的近似副本
+offline_enabled = true
+offline_threshold = 0.88
+offline_max_balls = 2000
+offline_max_merges = 500
+merge_archived = false
+
+# 试运行：只统计不落库
+dry_run = false
