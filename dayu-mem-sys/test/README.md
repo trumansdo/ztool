@@ -145,6 +145,25 @@ cp target/release/dayu_napi.dll test/dayu_test.node
 
 本地 ONNX 还需要 ONNX Runtime 动态库；未设置 `ORT_DYLIB_PATH` 时 `lib/harness.cjs` 自动指向 `models/onnxruntime/lib/onnxruntime.dll`。
 
+Cargo 侧同理：Rust 测试里由 `dayu_testkit::ensure_ort_dylib()` 在首次 `ort` 调用前补上同一个路径（条件是用户没自己设 `ORT_DYLIB_PATH`、且仓库里确实有这个 dll）。**必须在 `OnceLock`/`LazyLock` 初始化的最前面调用**——`ort` 只在建 Session 时读一次环境变量。
+
+不加这一步会踩一个很难看的坑：`ort` 找不到 `ORT_DYLIB_PATH` 就退回系统 `PATH`，而系统里常有一个更旧的 `onnxruntime.dll`（本机是 1.17.1），报错是
+
+```
+ort 2.0.0-rc.15 is not compatible with the ONNX Runtime binary found at `onnxruntime.dll`;
+expected version >= '1.31.x', but got '1.17.1'
+```
+
+——报错指向裸文件名 `onnxruntime.dll`，看不出是找错了文件，会误以为是版本装错。
+
+模型目录 `models/infinilabs` 在 Windows 上必须是**目录联接（junction）**而不是 cygwin 符号链接：
+
+```powershell
+New-Item -ItemType Junction -Path 'models\infinilabs' -Target 'E:\dev_data\huggingface_models\infinilabs'
+```
+
+cygwin 的 `ln -s` 生成的是带 `/cygdrive/...` 目标的链接，Rust（原生 Windows 二进制）`Path::exists()` 直接返回 false——测试会静默走「模型不存在 → 跳过」分支，看着全绿其实一个都没跑。判断方法：`cargo test -p dayu-core --features onnx --test e2e` 如果 `finished in 0.00s`，就是模型没被找到（真跑要 0.5s 以上）。
+
 ## 常用命令
 
 ```bash

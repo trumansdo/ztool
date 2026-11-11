@@ -29,6 +29,9 @@ use std::sync::{Arc, LazyLock};
 
 /// 模型加载结果缓存：`None` 表示本机没有可用模型，用例应跳过而不是打红。
 static GLOBAL_EMBEDDING: LazyLock<Option<Arc<dyn EmbeddingBackend>>> = LazyLock::new(|| {
+    // 必须在任何 ort 调用之前：系统 PATH 里那个旧 onnxruntime.dll 会先被找到
+    dayu_testkit::ensure_ort_dylib();
+
     let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())

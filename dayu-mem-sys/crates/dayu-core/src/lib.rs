@@ -1013,6 +1013,9 @@ mod tests {
     /// 不是每台机器、每个 CI 都有。测试应报告「跳过」而不是把整套测试打红。
     #[cfg(feature = "onnx")]
     static GLOBAL_EMBEDDING: LazyLock<Option<Arc<dyn EmbeddingBackend>>> = LazyLock::new(|| {
+        // 必须在任何 ort 调用之前：系统 PATH 里那个旧 onnxruntime.dll 会先被找到
+        dayu_testkit::ensure_ort_dylib();
+
         let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|p| p.parent())

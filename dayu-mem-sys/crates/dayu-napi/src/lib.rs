@@ -816,6 +816,9 @@ impression_threshold = 0.4
             eprintln!("跳过 init_with_valid_config: 模型文件不存在");
             return;
         }
+        // 模型在 → ort 会真的建 Session，此时必须让 load-dynamic 找到仓库自带的
+        // ONNX Runtime，否则会先命中系统 PATH 里的旧版本而版本不符
+        dayu_testkit::ensure_ort_dylib();
 
         let toml = config_toml(
             &model.to_string_lossy().replace('\\', "/"),

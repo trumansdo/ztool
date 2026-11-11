@@ -282,6 +282,7 @@ mod tests {
     fn backend() -> &'static OrtEmbeddingBackend {
         static BACKEND: OnceLock<OrtEmbeddingBackend> = OnceLock::new();
         BACKEND.get_or_init(|| {
+            dayu_testkit::ensure_ort_dylib();
             let (mp, tp) = (model_path(), tokenizer_path());
             assert!(
                 mp.exists(),

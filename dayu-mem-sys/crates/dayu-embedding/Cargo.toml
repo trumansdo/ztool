@@ -24,3 +24,4 @@ test-support = []
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+dayu-testkit = { path = "../dayu-testkit" }

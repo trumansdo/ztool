@@ -33,5 +33,9 @@ chrono = { version = "0.4", features = ["serde"] }
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt", "macros"] }
 ort = { version = "2.0.0-rc.15", features = ["load-dynamic"] }
-tokenizers = "0.21"
+# 默认 feature 里的 `onig` 会拉 onig_sys（C 语言 oniguruma），在 Windows +
+# rust-lld + 新版 UCRT 下因 `__imp_realloc` / `__imp_strcat_s` 符号不匹配而链接失败。
+# 换成纯 Rust 的 `fancy-regex`（tokenizers 要求 onig 或 fancy-regex 二选一），
+# 保留 `esaxx_fast`（Unigram 分词加速，C++ 但不碰 UCRT 符号）。
+tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex", "esaxx_fast"] }
 ndarray = "0.17"

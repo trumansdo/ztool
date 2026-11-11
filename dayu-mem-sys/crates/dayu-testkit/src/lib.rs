@@ -57,6 +57,36 @@ pub fn temp_dir(prefix: &str) -> std::path::PathBuf {
 }
 
 // ============================================================
+// ONNX Runtime 动态库定位
+// ============================================================
+
+/// 让 `ort` 的 `load-dynamic` 找到仓库自带的 ONNX Runtime
+///
+/// `ort` 只认环境变量 `ORT_DYLIB_PATH`，找不到就退回系统 `PATH`——而系统里
+/// 常有一个更旧的 `onnxruntime.dll`（比如 1.17.1），版本不满足会直接 panic，
+/// 报错还指向裸文件名 `onnxruntime.dll` 而不是我们的路径，很难看出是找错了文件。
+///
+/// 这里在**进程内**补上环境变量，条件是：
+/// - 用户没自己设 `ORT_DYLIB_PATH`（尊重显式覆盖）
+/// - 仓库里确实有 `models/onnxruntime/lib/onnxruntime.dll`
+///
+/// 用 `set_var` 是因为 `ort` 在首次建 Session 时读环境变量，没有别的方式传路径。
+/// 必须在任何 ONNX 调用之前执行——所以调用方应放在 `OnceLock`/`LazyLock`
+/// 初始化的最前面。
+pub fn ensure_ort_dylib() {
+    if std::env::var_os("ORT_DYLIB_PATH").is_some() {
+        return;
+    }
+    let dll = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../models/onnxruntime/lib/onnxruntime.dll");
+    if !dll.exists() {
+        return; // 没自带运行时，交给 ort 自己找
+    }
+    // SAFETY: 在 `OnceLock`/`LazyLock` 初始化里调用，此时没有并发读取该变量的代码。
+    unsafe { std::env::set_var("ORT_DYLIB_PATH", &dll) };
+}
+
+// ============================================================
 // 球夹具
 // ============================================================
 
