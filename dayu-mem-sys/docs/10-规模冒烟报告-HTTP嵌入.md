@@ -7,8 +7,8 @@
 > |:--|:--|
 > | `test/scale-http.cjs` | `test/bin/scale.cjs --profile http` |
 > | `test/probe.cjs` | `test/bin/probe.cjs --profile http` |
-> | `test/relevance.cjs` | `test/bin/relevance.cjs --profile http` |
-> | `test/relevance-rate.cjs` | `test/bin/relevance-rate.cjs --run <运行目录>` |
+> | `test/relevance.cjs` | `test/lab/relevance.cjs --profile http` |
+> | `test/relevance-rate.cjs` | `test/lab/relevance-rate.cjs --run <运行目录>` |
 > | `test/config-http.toml` | `test/config/http.toml`（差异层，全量见 `config/base.toml`） |
 > | `test/config-lms.toml` | `test/config/lms.toml` |
 > | `test/scale-http-result.json` | `test/out/<运行目录>/result.json` |

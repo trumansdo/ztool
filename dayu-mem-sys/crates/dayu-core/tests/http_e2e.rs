@@ -46,12 +46,14 @@ fn embedding_backend() -> Arc<dyn EmbeddingBackend> {
 }
 
 fn core() -> DayuCore {
-    let mut config = Config::default();
-    config.embedding_dim = Some(DIM);
-    config.total_water_budget = 2.5;
-    config.start_top_n = 5;
-    config.max_flow_depth = 3;
-    config.max_lit_ball_count = 50;
+    let config = Config {
+        embedding_dim: Some(DIM),
+        total_water_budget: 2.5,
+        start_top_n: 5,
+        max_flow_depth: 3,
+        max_lit_ball_count: 50,
+        ..Default::default()
+    };
     DayuCore::new(Arc::new(config), embedding_backend()).expect("DayuCore 创建失败")
 }
 

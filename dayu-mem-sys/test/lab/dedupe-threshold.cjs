@@ -3,7 +3,7 @@
 // start_dedupe_threshold 该定在哪，取决于「同一件事的两次记录」与「两件不同的事」
 // 在嵌入空间里的余弦分布。这个脚本只测句对，不建库。
 //
-// 运行：node test/bin/dedupe-threshold.cjs --profile http
+// 运行：node test/lab/dedupe-threshold.cjs --profile http
 
 const paths = require('../lib/paths.cjs');
 const harness = require('../lib/harness.cjs');

@@ -11,7 +11,7 @@
 //   2. 余弦裕度   —— 注入集平均余弦 − 全库平均余弦（去掉各模型的尺度差）
 //   3. 纯度       —— 仅同规模内比
 //
-// 运行：node test/bin/relevance-scale.cjs            # 扫描 test/out/ 下所有 relevance 运行
+// 运行：node test/lab/relevance-scale.cjs            # 扫描 test/out/ 下所有 relevance 运行
 
 const fs = require('fs');
 const path = require('path');
@@ -61,7 +61,7 @@ function collect() {
 
 const byTag = collect();
 if (byTag.size === 0) {
-  console.error('没有找到任何 relevance 运行，请先跑 bin/relevance.cjs');
+  console.error('没有找到任何 relevance 运行，请先跑 lab/relevance.cjs');
   process.exit(1);
 }
 

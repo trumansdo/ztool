@@ -213,6 +213,11 @@ impl StorageBackend for TriviumStorage {
         }
 
         // 读管道：双向边按 (min,max) 去重
+        //
+        // 只保留**两端都在子图内**的边。`db.get_edges(id)` 会返回跨出深度边界的边，
+        // 直接收下就会得到一个悬空边（另一端没加载）——那等于绕过 `depth` 预算
+        // 告诉调用方“外面还有个球”。当前两个消费者都做了防御跳过，但那是隐患：
+        // 任何新消费者只要假设「子图是闭合的」就会读到不存在的球。
         let mut seen: HashSet<(u64, u64)> = HashSet::new();
         let mut pipes = Vec::new();
         for id in &visited {
@@ -220,6 +225,9 @@ impl StorageBackend for TriviumStorage {
                 .get_edges(*id)
                 .map_err(|e| StorageError::Io(format!("[TRIVIUM_EDGES] {e}")))?;
             for e in edges.iter().filter(|e| e.label == PIPE_LABEL) {
+                if !visited.contains(&e.target_id) {
+                    continue;
+                }
                 let key = if *id < e.target_id {
                     (*id, e.target_id)
                 } else {

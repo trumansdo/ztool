@@ -7,8 +7,8 @@
 // 同时给出去重版（语料 375 基础句铺成 N 球，每句约 N/375 份副本）。
 //
 // 运行：
-//   node test/bin/relevance-rate.cjs                    # 取最近一次 relevance 运行
-//   node test/bin/relevance-rate.cjs --run test/out/20261110-2230-relevance-http-5000b-i5000
+//   node test/lab/relevance-rate.cjs                    # 取最近一次 relevance 运行
+//   node test/lab/relevance-rate.cjs --run test/out/20261110-2230-relevance-http-5000b-i5000
 
 const path = require('path');
 
@@ -28,7 +28,7 @@ function resolveRun() {
   const explicit = arg('run', null);
   if (explicit) return path.resolve(paths.REPO_ROOT, explicit);
   const latest = paths.listRuns().find((r) => r.meta.script === 'relevance');
-  if (!latest) throw new Error('没有找到 relevance 运行目录，请先跑 bin/relevance.cjs');
+  if (!latest) throw new Error('没有找到 relevance 运行目录，请先跑 lab/relevance.cjs');
   return latest.dir;
 }
 

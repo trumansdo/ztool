@@ -10,8 +10,8 @@
 //   2. 阈值按各模型自身的随机基线平移 —— 相关集 = cos >= baseline + Δ
 //
 // 运行：
-//   node test/bin/relevance-compare.cjs                     # 自动取各 profile 最近一次
-//   node test/bin/relevance-compare.cjs --runs http=test/out/xxx,lms=test/out/yyy
+//   node test/lab/relevance-compare.cjs                     # 自动取各 profile 最近一次
+//   node test/lab/relevance-compare.cjs --runs http=test/out/xxx,lms=test/out/yyy
 
 const path = require('path');
 

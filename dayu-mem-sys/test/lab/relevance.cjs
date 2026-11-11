@@ -8,8 +8,8 @@
 //   3. 召回率：全库 Top-20 近邻中被注入的比例
 //   4. 随机基线：随机 5 球的平均余弦（噪音水位）
 //
-// 运行：node test/bin/relevance.cjs --profile http --balls 5000 --budget 10 --top 5
-//       node test/bin/relevance.cjs --profile http --balls 5000 --inject 5   # 测预算截断
+// 运行：node test/lab/relevance.cjs --profile http --balls 5000 --budget 10 --top 5
+//       node test/lab/relevance.cjs --profile http --balls 5000 --inject 5   # 测预算截断
 //
 // 产物：test/out/<run>/{meta.json, result.json, db/, logs/}
 
