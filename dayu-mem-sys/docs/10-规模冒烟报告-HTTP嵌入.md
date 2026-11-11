@@ -5,7 +5,7 @@
 >
 > | 旧 | 新 |
 > |:--|:--|
-> | `test/scale-http.cjs` | `test/bin/scale.cjs --profile http` |
+> | `test/scale-http.cjs` | `test/lab/scale.cjs --profile http` |
 > | `test/probe.cjs` | `test/bin/probe.cjs --profile http` |
 > | `test/relevance.cjs` | `test/lab/relevance.cjs --profile http` |
 > | `test/relevance-rate.cjs` | `test/lab/relevance-rate.cjs --run <运行目录>` |

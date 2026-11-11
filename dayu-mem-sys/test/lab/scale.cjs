@@ -1,14 +1,18 @@
-// 规模冒烟：几十 / 几百 / 几千 / 几万 / 十万球
+// 规模测量：几十 / 几百 / 几千 / 几万 / 十万球
+//
+// 这是**测量**不是测试：产出是一张规模×参数的表格（延迟、命中率、图规模），
+// 没有 pass/fail，跑完永远退出码 0。所以它住 lab/ 而不是 bin/。
+// 要「规模上不出错」的判定，用 bin/smoke.cjs 的不变量。
 //
 // 语料：test/corpus.cjs（15 领域 × 25 条 + 30 条查询），展开规则见 lib/corpus.cjs
 // 每次运行一个干净的库，落在 test/out/<时间戳>-scale-<profile>/db/
 //
 // 运行：
-//   node test/bin/scale.cjs --profile http --balls 100
-//   node test/bin/scale.cjs --profile http --ladder
-//   node test/bin/scale.cjs --profile http --ladder --skip 100000
-//   node test/bin/scale.cjs --profile http --balls 5000 --budgets 1.0,2.5,10
-//   node test/bin/scale.cjs --profile http --balls 5000 --tops 3,5,10
+//   node test/lab/scale.cjs --profile http --balls 100
+//   node test/lab/scale.cjs --profile http --ladder
+//   node test/lab/scale.cjs --profile http --ladder --skip 100000
+//   node test/lab/scale.cjs --profile http --balls 5000 --budgets 1.0,2.5,10
+//   node test/lab/scale.cjs --profile http --balls 5000 --tops 3,5,10
 //
 // 产物：test/out/<run>/{meta.json, result.json, db/, logs/}
 

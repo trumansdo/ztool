@@ -23,10 +23,10 @@ test/
 │
 ├── bin/                   冒烟测试（有断言，可进 CI）
 │   ├── smoke.cjs          长期库全链路冒烟（data/main.tdb）
-│   ├── scale.cjs          规模阶梯冒烟
-│   └── probe.cjs          嵌入后端连通性
+│   └── probe.cjs          部署连通性（napi 加载 / 配置解析 / 库 open / 一次完整链路）
 │
 ├── lab/                   参数标定与对照实验（产出数字，无断言，不进 CI）
+│   ├── scale.cjs          规模 × 参数矩阵测量
 │   ├── relevance.cjs      语义级相关率（建库 + 查询）
 │   ├── relevance-rate.cjs 相关率离线分析（读运行目录）
 │   ├── relevance-compare.cjs  跨模型对照（离线）
@@ -62,13 +62,14 @@ test/
 ## 测试分层
 
 从「离代码多近」到「离真实使用多近」，五层各管一件事，**不重复断言同一个东西**。
+合计 214 个可枚举用例（`cargo test --all-features -- --list`），其中 19 个带 `#[ignore]`（需真模型或远程服务），默认 `cargo test --workspace` 跑 195 个全绿。
 
 | 层 | 位置 | 用什么跑 | 关注点 | 数量 |
 |:--|:--|:--|:--|--:|
-| 1 单元 | `crates/*/src/**/*.rs` 的 `mod tests` | `cargo test` | 单个函数/分支，可访问私有 | ~184 |
+| 1 单元 | `crates/*/src/**/*.rs` 的 `mod tests` | `cargo test` | 单个函数/分支，可访问私有 | 185 |
 | 2 单模块契约 | `crates/*/tests/contract.rs` | `cargo test` | 只能用 `pub` API，断对外承诺 | 18 |
-| 3 聚合用例 | `crates/dayu-core/tests/e2e/` | `cargo test --features onnx` | 跨 crate 串起来的一条完整链路 | 6 |
-| 4 冒烟 | `test/bin/*.cjs` | `node` | 真实 napi + 真实嵌入，有断言可 CI | 3 |
+| 3 聚合用例 | `crates/dayu-core/tests/{e2e/,http_e2e.rs}` | `cargo test --features onnx` / `--features http` | 跨 crate 串起来的一条完整链路 | 11（6 用例 + 5 HTTP） |
+| 4 冒烟 | `test/bin/*.cjs` | `node` | 真实 napi + 真实嵌入，有断言可 CI | 2 脚本 / 11 断言 |
 | 5 基准 | `test/memory-eval/` | `node test/memory-eval/run-eval.cjs` | 公开数据集上的检索质量 | 1 |
 
 ### 为什么 1 和 2 要分开
@@ -94,7 +95,7 @@ test/
 | 跨运行 | 有价值 | 有价值（一次跑几十分钟） | 无价值 |
 | 删除后果 | 丢长期数据 | 丢评测对比基准 | 零损失 |
 | 清理 | 手动 + `snapshots/` 保护 | 手动按目录删 | `rm -rf test/out` |
-| 产生者 | `bin/smoke.cjs` | `memory-eval/run-eval.cjs` | `bin/*.cjs`、`cargo test` |
+| 产生者 | `bin/smoke.cjs` | `memory-eval/run-eval.cjs` | `bin/*.cjs`、`lab/*.cjs`、`cargo test` |
 
 评测产物单独开目录，是为了让 `rm -rf test/out`（日常测试清理）不会顺手删掉
 几十分钟才跑出来的一次基准结果；反过来，评测的几百 MB 库也不会拖慢日常测试。
@@ -124,8 +125,14 @@ test/
 | 什么时候删 | 跟着代码改 | 几个月后还要按同一组参数重跑 |
 | 产物 | `out/`，可删 | 对照结论，要留 |
 
-`relevance*.cjs` 的 `process.exit(1)` 只出现在 `.catch()` 里——崩了才退出。
-把它们和 `smoke.cjs` 混在一个目录，会让「跑测试」和「做实验」的维护方式互相污染。
+`relevance*.cjs` 与 `scale.cjs` 的 `process.exit(1)` 只出现在 `.catch()` 里——崩了才退出，
+跑完无论数字多离谱都是 0。把它们和 `smoke.cjs` / `probe.cjs` 混在一个目录，
+会让「跑测试」和「做实验」的维护方式互相污染。
+
+`probe.cjs` 曾经也在这个边界上（只打印、无断言）。它被留下并补上 8 条断言，理由是：
+它是唯一验证「napi 能加载 / 配置能解析 / 库能 open / 一次 recall 能跑通」的脚本，
+这些是部署问题而不是性能问题，必须有人守。`scale.cjs` 相反——产出是 30 行数字，
+没有 pass/fail 可言，所以搬去了 `lab/`。
 
 **5. 配置分层 + 逻辑抽公共**
 
@@ -171,16 +178,17 @@ cygwin 的 `ln -s` 生成的是带 `/cygdrive/...` 目标的链接，Rust（原�
 ## 常用命令
 
 ```bash
-# 连通性
+# 部署连通性（8 条断言，失败退出码非 0）
 node test/bin/probe.cjs --profile http
+node test/bin/probe.cjs --profile onnx
 
-# 长期库全链路冒烟（追加一轮）
+# 长期库全链路冒烟（追加一轮，3 条不变量）
 node test/bin/smoke.cjs --profile onnx
 node test/bin/smoke.cjs --profile onnx --reset   # 重建（先备份到 data/snapshots/）
 
-# 规模阶梯
-node test/bin/scale.cjs --profile http --ladder
-node test/bin/scale.cjs --profile http --balls 5000 --budgets 1.0,2.5,10
+# 规模 × 参数矩阵（测量，无断言）
+node test/lab/scale.cjs --profile http --ladder
+node test/lab/scale.cjs --profile http --balls 5000 --budgets 1.0,2.5,10
 
 # 语义相关率
 node test/lab/relevance.cjs --profile http --balls 5000 --budget 10 --top 5
@@ -205,7 +213,7 @@ rm -rf test/memory-eval/2026*      # 某次或全部评测运行
 
 | 类型 | 入库 | 例 |
 |:--|:--|:--|
-| 脚本 | ✅ | `bin/*.cjs`、`lib/*.cjs`、`memory-eval/run-eval.cjs` |
+| 脚本 | ✅ | `bin/*.cjs`、`lab/*.cjs`、`lib/*.cjs`、`memory-eval/run-eval.cjs` |
 | 配置（无密钥） | ✅ | `config/base.toml`、`lms.toml`、`onnx.toml`、`http.example.toml` |
 | 语料 | ✅ | `corpus.cjs` |
 | 文档 | ✅ | `README.md`、`PROGRESS.md`、`memory-eval/README.md` |

@@ -167,6 +167,9 @@ function writeMeta(run, meta) {
     dim: meta.dim ?? null,
     db: paths.rel(run.dbPath),
     cache: meta.cache ?? null,
+    // 断言结果：bin/ 下的脚本必须落盘，这样「这次跑过没过」不用翻终端输出
+    checks: meta.checks ?? null,
+    checks_ok: meta.checks_ok ?? null,
     note: meta.note ?? null,
   });
 }
