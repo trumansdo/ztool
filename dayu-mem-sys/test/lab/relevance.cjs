@@ -35,7 +35,12 @@ const EMBED_CHUNK = +arg('chunk', 64);
 (async () => {
   const ds = datasetLib.load(DATASET);
   const startedAt = new Date().toISOString();
-  const run = paths.newRun('relevance', `${PROFILE}-${BALLS}b-i${INJECT}`);
+  // 目录名必须带 budget / top：只带球数的话，同规模不同预算会互相覆盖，
+  // 「一次运行 = 一个自描述目录」就失效了
+  const run = paths.newRun(
+    'relevance',
+    `${PROFILE}-${BALLS}b-b${BUDGET}-t${TOP}-i${INJECT}`,
+  );
 
   // 放宽注入预算：让尽可能多的点亮球都渲染出来，测的是「召回」而不是「预算截断」
   const { api, dim, identity } = await harness.init({
